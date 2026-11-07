@@ -1,0 +1,469 @@
+@import "tailwindcss";
+
+/*
+  Warm paper. Light = a sheet of planner paper with a faint red margin rule.
+  Dark = "lamplight": deep brown-black, cream ink, the margin rule glows amber.
+*/
+:root {
+  color-scheme: light;
+  --paper: #efeadc;
+  --sheet: #f7f3e8;
+  --sheet-2: #e8e2d1;
+  --ink: #2a2620;
+  --ink-2: #6b6558;
+  --ink-3: #9a9382;
+  --rule: rgba(70, 55, 30, 0.16);
+  --rule-strong: rgba(70, 55, 30, 0.3);
+  --accent: #2d3f5e;
+  --accent-ink: #f7f3e8;
+  --margin: #c98474;
+  --overdue: #a3402f;
+  --school: #3f5f8f;
+  --ecs: #5f7f4f;
+  --other: #86576e;
+  --shadow: 0 1px 0 rgba(70, 55, 30, 0.1), 0 8px 24px -12px rgba(70, 55, 30, 0.35);
+  --today-wash: rgba(201, 132, 116, 0.1);
+  /* Home timeline blocks: how strongly the list colour tints the fill, and how the title reads. */
+  --blk-mix: 22%;
+  --blk-base: var(--sheet);
+  --blk-bar: 3px;
+  --blk-neutral: var(--ink-3);
+  --blk-title: 0.75rem;
+  --blk-title-weight: 500;
+  --blk-ring: 0%;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #1b1612;
+  --sheet: #231d17;
+  --sheet-2: #2c251d;
+  --ink: #ece1cc;
+  --ink-2: #aa9e89;
+  --ink-3: #7a705f;
+  --rule: rgba(236, 225, 204, 0.12);
+  --rule-strong: rgba(236, 225, 204, 0.26);
+  --accent: #e3b25f;
+  --accent-ink: #1b1612;
+  --margin: #b8704f;
+  --overdue: #e5806b;
+  --school: #86a4d4;
+  --ecs: #9bbb86;
+  --other: #c58fa8;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+  --today-wash: rgba(227, 178, 95, 0.08);
+  --blk-mix: 46%;
+  --blk-base: var(--sheet-2);
+  --blk-bar: 4px;
+  --blk-neutral: var(--ink-2);
+  --blk-title: 0.8125rem;
+  --blk-title-weight: 600;
+  --blk-ring: 38%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #1b1612;
+    --sheet: #231d17;
+    --sheet-2: #2c251d;
+    --ink: #ece1cc;
+    --ink-2: #aa9e89;
+    --ink-3: #7a705f;
+    --rule: rgba(236, 225, 204, 0.12);
+    --rule-strong: rgba(236, 225, 204, 0.26);
+    --accent: #e3b25f;
+    --accent-ink: #1b1612;
+    --margin: #b8704f;
+    --overdue: #e5806b;
+    --school: #86a4d4;
+    --ecs: #9bbb86;
+    --other: #c58fa8;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+    --today-wash: rgba(227, 178, 95, 0.08);
+    --blk-mix: 46%;
+    --blk-base: var(--sheet-2);
+    --blk-bar: 4px;
+    --blk-neutral: var(--ink-2);
+    --blk-title: 0.8125rem;
+    --blk-title-weight: 600;
+    --blk-ring: 38%;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-sheet2: var(--sheet-2);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink-2);
+  --color-ink3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-rulestrong: var(--rule-strong);
+  --color-accent: var(--accent);
+  --color-accentink: var(--accent-ink);
+  --color-margin: var(--margin);
+  --color-overdue: var(--overdue);
+  --color-school: var(--school);
+  --color-ecs: var(--ecs);
+  --color-other: var(--other);
+  --font-display: var(--f-display), "Iowan Old Style", Georgia, serif;
+  --font-sans: var(--f-body), ui-sans-serif, system-ui, sans-serif;
+  --shadow-lift: var(--shadow);
+}
+
+html {
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* Paper grain: a barely-there fibre texture so the surface isn't flat. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.28  0 0 0 0 0.15  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+:root[data-theme="dark"] body::before {
+  opacity: 0.25;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body::before {
+    opacity: 0.25;
+  }
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.display {
+  font-family: var(--f-display), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.012em;
+}
+
+/* The ruled page that agenda and lists sit on, with the planner's red margin line. */
+.ruled {
+  position: relative;
+  background-color: var(--sheet);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 43px, var(--rule) 43px, var(--rule) 44px);
+  box-shadow: var(--shadow);
+  border-radius: 3px;
+}
+.ruled::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--margin-x, 4.75rem);
+  width: 1px;
+  background: var(--margin);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.sheet {
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+  border-radius: 3px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 80ms;
+}
+.btn:hover {
+  background: var(--sheet-2);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+.btn-primary:hover {
+  background: color-mix(in oklab, var(--accent) 88%, var(--ink));
+}
+.btn-ghost {
+  border-color: transparent;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field {
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.field:focus {
+  outline: 2px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  background: var(--sheet);
+}
+
+/* Ink check: the tick draws itself when a task is completed. */
+.check {
+  position: relative;
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink-3);
+  display: grid;
+  place-items: center;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 120ms, background 160ms;
+}
+.check:hover {
+  border-color: var(--ink);
+}
+.check svg {
+  opacity: 0;
+}
+.check svg path {
+  stroke-dasharray: 18;
+  stroke-dashoffset: 18;
+  transition: stroke-dashoffset 220ms ease-out 40ms;
+}
+.check[aria-checked="true"] svg {
+  opacity: 1;
+}
+.check[aria-checked="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.check[aria-checked="true"] svg path {
+  stroke-dashoffset: 0;
+  stroke: var(--paper);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.anim-pop {
+  animation: pop 150ms ease-out both;
+}
+.anim-fade {
+  animation: fade 120ms ease-out both;
+}
+
+/* Scrollbars that don't shout */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Home day timeline: a sheet with the planner's margin rule just right of the hour labels. */
+.day-sheet {
+  position: relative;
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+  border-radius: 3px;
+}
+.day-sheet::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3.25rem;
+  width: 1px;
+  background: var(--margin);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Untimed box roll: the new day's box rolls up into place, the old one rolls away (reversed when scrolling up). */
+@keyframes roll-in-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes roll-in-down {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes roll-out-up {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-14px); }
+}
+@keyframes roll-out-down {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(14px); }
+}
+@keyframes roll-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes roll-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.roll-in-up { animation: roll-in-up 300ms ease-out both; }
+.roll-in-down { animation: roll-in-down 300ms ease-out both; }
+.roll-out-up { animation: roll-out-up 280ms ease-out both; }
+.roll-out-down { animation: roll-out-down 280ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .roll-in-up, .roll-in-down { animation: roll-fade-in 160ms linear both !important; }
+  .roll-out-up, .roll-out-down { animation: roll-fade-out 160ms linear both !important; }
+}
+
+/* Home timeline block: list colour tint + a solid left bar. Stronger in Lamplight so blocks read against the sheet. */
+.blk {
+  background: color-mix(in oklab, var(--blk) var(--blk-mix), var(--blk-base));
+  border-left: var(--blk-bar) solid var(--blk);
+}
+:root[data-theme="dark"] .blk {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--blk) var(--blk-ring), transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .blk {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--blk) var(--blk-ring), transparent);
+  }
+}
+.blk-title {
+  color: var(--ink);
+  font-size: var(--blk-title);
+  font-weight: var(--blk-title-weight);
+}
+
+/* "Add to to-do list" switch */
+.todo-switch {
+  position: relative;
+  flex: none;
+  width: 2.5rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  background: var(--sheet-2);
+  cursor: pointer;
+  transition: background 160ms, border-color 160ms;
+}
+.todo-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.4rem - 6px);
+  height: calc(1.4rem - 6px);
+  border-radius: 999px;
+  background: var(--ink-3);
+  transition: transform 180ms ease-out, background 160ms;
+}
+.todo-switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: transparent;
+}
+.todo-switch[aria-checked="true"]::after {
+  transform: translateX(1.1rem);
+  background: var(--accent-ink);
+}
+.todo-switch:disabled {
+  cursor: not-allowed;
+}
+
+/* Events on the to-do list get a squared check; tasks keep the round one. */
+.check.is-event {
+  border-radius: 5px;
+}
+
+/* Home summary: progress ring + to-do rows */
+.ring-arc {
+  transition: stroke-dashoffset 650ms cubic-bezier(0.3, 0.7, 0.2, 1), stroke 200ms;
+}
+.todo-row {
+  transition: opacity 220ms;
+}
+.todo-title {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 55%;
+  background-size: 0% 1px;
+  transition: background-size 260ms ease-out;
+}
+.todo-row[data-done="true"] .todo-title {
+  background-size: 100% 1px;
+}
