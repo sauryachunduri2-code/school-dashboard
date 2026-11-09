@@ -7,7 +7,7 @@ import { repo } from "./data/repo";
 import { localMode } from "./env";
 import { allEvents, mergeDelta, pruneCalendars, putEvent, removeEvent, setSeriesTodo, type EventsCache } from "./google/merge";
 import type { SyncDelta } from "./google/client";
-import type { EventPatch } from "./google/mapping";
+import { resolveListTags, type EventPatch } from "./google/mapping";
 import { DEFAULT_REMINDER_SETTINGS, DEFAULT_SETTINGS_ROW, sanitizeSettings, type ReminderSettings } from "./reminders";
 import { EVENT_CHECKS_KEY, toggleEventCheck, type EventCheck } from "./event-checks";
 import { optimisticRemove, optimisticUpsert } from "./optimistic";
@@ -154,6 +154,7 @@ export function useGoogleEvents(): GEvent[] {
   });
   const { data: status } = useGoogleStatus();
   const calendars = useCalendars();
+  const lists = useLists();
   const enabled = useMemo(() => calendars.filter((c) => c.enabled), [calendars]);
   const enabledKey = enabled.map((c) => c.id).join("|");
 
@@ -176,8 +177,8 @@ export function useGoogleEvents(): GEvent[] {
   // Calendars toggled in Settings: re-sync and drop events of disabled calendars immediately.
   const visible = useMemo(() => {
     const ids = new Set(enabledKey ? enabledKey.split("|") : []);
-    return allEvents(data).filter((e) => ids.has(e.calendar_id));
-  }, [data, enabledKey]);
+    return resolveListTags(allEvents(data).filter((e) => ids.has(e.calendar_id)), lists);
+  }, [data, enabledKey, lists]);
   return localMode ? (dev.data ?? []) : visible;
 }
 
@@ -190,6 +191,8 @@ function applyPatch(e: GEvent, p: EventPatch): GEvent {
     end: p.end ?? e.end,
     all_day: p.all_day ?? e.all_day,
     list_id: p.list_id === undefined ? e.list_id : p.list_id,
+    // A list picked in the editor replaces any #list: tag, as it does once Google returns the saved event.
+    list_tag: p.list_id === undefined ? e.list_tag : null,
     starred: p.starred ?? e.starred,
     flagged: p.flagged ?? e.flagged,
     todo: p.todo ?? e.todo,

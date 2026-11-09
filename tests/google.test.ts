@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGoogleClient } from "@/lib/google/client";
 import { allEvents, mergeDelta, pruneCalendars, putEvent, shiftSeries, type EventsCache } from "@/lib/google/merge";
-import { fromGoogle, toGoogleBody } from "@/lib/google/mapping";
+import { descriptionTags, fromGoogle, resolveListTags, toGoogleBody } from "@/lib/google/mapping";
 import { refreshAccessToken } from "@/lib/google/token";
 import type { GoogleEvent } from "@/lib/google/types";
 
@@ -214,5 +214,56 @@ describe("token refresh", () => {
   it("maps invalid_grant to a 401", async () => {
     const f = vi.fn(async () => json({ error: "invalid_grant" }, 400));
     await expect(refreshAccessToken({ clientId: "i", clientSecret: "s", refreshToken: "r", fetch: f })).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe("description tags", () => {
+  const lists = [
+    { id: "hosa", name: "HOSA" },
+    { id: "psych", name: "AP Psych" },
+    { id: "rt", name: "Remember Together" },
+  ];
+
+  it("reads #todo and #list: from the description", () => {
+    expect(descriptionTags("Outline intro\n#todo #list:HOSA")).toEqual({ todo: true, list: "HOSA" });
+    expect(descriptionTags("<p>#TODO</p><p>#list:ap-psych</p>")).toEqual({ todo: true, list: "ap-psych" });
+    expect(descriptionTags("see example.com/#todo and ##todo or foo#todo")).toEqual({ todo: false, list: null });
+    expect(descriptionTags("#todos for later")).toEqual({ todo: false, list: null });
+  });
+
+  it("puts a tagged event on the to-do list and keeps the list name", () => {
+    const e = fromGoogle(ge("t", { description: "Chunk 1 of 3\n#todo #list:HOSA" }), cal);
+    expect(e.todo).toBe(true);
+    expect(e.list_id).toBeNull();
+    expect(e.list_tag).toBe("HOSA");
+  });
+
+  it("lets the dashboard's own values win over tags, including a cleared value", () => {
+    const cleared = fromGoogle(
+      ge("t", { description: "#todo #list:HOSA", extendedProperties: { private: { sd_todo: "", sd_list: "" } } }),
+      cal,
+    );
+    expect(cleared.todo).toBe(false);
+    expect(cleared.list_id).toBeNull();
+    expect(cleared.list_tag).toBeNull();
+    const set = fromGoogle(ge("t", { description: "#list:HOSA", extendedProperties: { private: { sd_list: "psych" } } }), cal);
+    expect(set.list_id).toBe("psych");
+    expect(set.list_tag).toBeNull();
+  });
+
+  it("untagged events are unchanged", () => {
+    const e = fromGoogle(ge("t", { description: "Bring calculator" }), cal);
+    expect(e.todo).toBe(false);
+    expect(e.list_tag).toBeNull();
+  });
+
+  it("resolves #list: names to list ids, ignoring case, spaces, - and _", () => {
+    const mk = (id: string, list_tag: string | null, list_id: string | null = null) =>
+      ({ ...fromGoogle(ge(id), cal), list_tag, list_id });
+    const out = resolveListTags(
+      [mk("a", "hosa"), mk("b", "AP-Psych"), mk("c", "remember_together"), mk("d", "Nope"), mk("e", "HOSA", "psych"), mk("f", null)],
+      lists,
+    );
+    expect(out.map((e) => e.list_id)).toEqual(["hosa", "psych", "rt", null, "psych", null]);
   });
 });
