@@ -1,4 +1,4 @@
-import type { CalendarRow, GEvent } from "../types";
+import type { CalendarRow, GEvent, List } from "../types";
 import type { GoogleEvent } from "./types";
 
 export const PROP_LIST = "sd_list";
@@ -6,9 +6,40 @@ export const PROP_STAR = "sd_star";
 export const PROP_FLAG = "sd_flag";
 export const PROP_TODO = "sd_todo";
 
+/**
+ * Tags typed in an event's description, so an event made in Google Calendar (or by an assistant that can only set
+ * the title and description) can still land on the dashboard's to-do list and in a list:
+ *
+ *   #todo          on the "To-do today" list (same as ticking To-do in the editor)
+ *   #list:HOSA     in the list with that name. Case, spaces, "-" and "_" are ignored, so #list:ap-psych = "AP Psych".
+ *
+ * A value set in the dashboard always wins: once the editor has written sd_todo / sd_list (even to clear it),
+ * the tag is ignored for that field.
+ */
+const TODO_TAG = /(?<![\w/&#])#todo\b/i;
+const LIST_TAG = /(?<![\w/&#])#list:([^\s#<]+)/i;
+
+export function descriptionTags(description: string): { todo: boolean; list: string | null } {
+  return { todo: TODO_TAG.test(description), list: description.match(LIST_TAG)?.[1] ?? null };
+}
+
+const listKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Fill list_id from a #list: tag when the event has no list of its own. Unknown names are left alone. */
+export function resolveListTags(events: GEvent[], lists: Pick<List, "id" | "name">[]): GEvent[] {
+  if (!events.some((e) => e.list_tag && !e.list_id)) return events;
+  const byName = new Map(lists.map((l) => [listKey(l.name), l.id]));
+  return events.map((e) => {
+    if (!e.list_tag || e.list_id) return e;
+    const id = byName.get(listKey(e.list_tag));
+    return id ? { ...e, list_id: id } : e;
+  });
+}
+
 export function fromGoogle(raw: GoogleEvent, calendar: Pick<CalendarRow, "id" | "read_only">): GEvent {
   const priv = raw.extendedProperties?.private ?? {};
   const allDay = !!raw.start?.date && !raw.start?.dateTime;
+  const tags = descriptionTags(raw.description ?? "");
   return {
     id: raw.id,
     calendar_id: calendar.id,
@@ -21,9 +52,10 @@ export function fromGoogle(raw: GoogleEvent, calendar: Pick<CalendarRow, "id" | 
     recurring_event_id: raw.recurringEventId ?? null,
     recurrence: raw.recurrence ?? null,
     list_id: (priv[PROP_LIST] as string | undefined) || null,
+    list_tag: PROP_LIST in priv ? null : tags.list,
     starred: priv[PROP_STAR] === "1",
     flagged: priv[PROP_FLAG] === "1",
-    todo: priv[PROP_TODO] === "1",
+    todo: PROP_TODO in priv ? priv[PROP_TODO] === "1" : tags.todo,
     reminders_default: raw.reminders?.useDefault === true,
     reminders: (raw.reminders?.overrides ?? []).filter((o) => o.method === "popup").map((o) => o.minutes),
     read_only: calendar.read_only,

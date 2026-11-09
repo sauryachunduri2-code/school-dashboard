@@ -87,6 +87,8 @@ export interface GEvent {
   recurrence: string[] | null;
   /** Dashboard metadata stored in extendedProperties.private */
   list_id: string | null;
+  /** List name from a "#list:Name" tag in the description, used when list_id is not set (see descriptionTags). */
+  list_tag?: string | null;
   starred: boolean;
   flagged: boolean;
   /** On the dashboard's to-do list (extendedProperties.private.sd_todo). For a series it is stored on the master. */
