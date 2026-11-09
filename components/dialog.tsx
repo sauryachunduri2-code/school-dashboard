@@ -60,7 +60,11 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className={`anim-pop sheet relative z-10 mt-auto max-h-[92dvh] w-full overflow-y-auto rounded-b-none rounded-t-xl md:my-auto md:rounded-md ${wide ? "md:max-w-2xl" : "md:max-w-lg"} ${top ? "md:mt-[12vh] md:mb-auto" : ""}`}
+        className={`anim-pop sheet relative z-10 max-h-[92dvh] w-full overflow-y-auto md:my-auto md:rounded-md ${wide ? "md:max-w-2xl" : "md:max-w-lg"} ${
+          // Typing dialogs float at the top on phones: the iOS keyboard covers the bottom of the screen
+          // without shrinking the layout, so a bottom sheet ends up hidden behind it.
+          top ? "mx-3 mt-[max(0.75rem,env(safe-area-inset-top))] mb-auto rounded-xl md:mx-0 md:mt-[12vh] md:mb-auto" : "mt-auto rounded-b-none rounded-t-xl"
+        }`}
         style={{ border: "1px solid var(--rule-strong)" }}
       >
         {children}
