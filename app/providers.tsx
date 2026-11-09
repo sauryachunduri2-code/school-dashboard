@@ -4,6 +4,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { useEffect, useState, type ReactNode } from "react";
 import { CACHE_BUSTER, idbPersister, makeQueryClient } from "@/lib/query";
 import { UiProvider } from "@/lib/ui";
+import { ThemeClock } from "@/components/theme-toggle";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(makeQueryClient);
@@ -22,6 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
       // Paint from the saved cache immediately, then refresh everything in the background.
       onSuccess={() => void client.invalidateQueries()}
     >
+      <ThemeClock />
       <UiProvider>{children}</UiProvider>
     </PersistQueryClientProvider>
   );

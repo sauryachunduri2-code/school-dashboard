@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, Newsreader } from "next/font/google";
 import "./globals.css";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 
 const display = Newsreader({
@@ -29,14 +30,11 @@ export const viewport: Viewport = {
   ],
 };
 
-// Runs before first paint so the saved theme never flashes the wrong palette.
-const themeScript = `try{var t=localStorage.getItem('sd-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body>
         <Providers>{children}</Providers>
