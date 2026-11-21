@@ -49,6 +49,43 @@ export interface Task {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Checklist inside the task (migration 0007). Optional so rows saved before 0007 still fit; new tasks leave it out
+   * until a step is added, so saves keep working on a database that hasn't run 0007 yet.
+   */
+  steps?: TaskStep[];
+  /** Where an imported task came from ("classroom", "canvas"); null/absent = made in Daybook. */
+  source?: string | null;
+  /** The task's id in `source`, so a re-import updates it instead of adding a duplicate. */
+  external_id?: string | null;
+}
+
+export interface TaskStep {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export type FocusMode = "stopwatch" | "countdown" | "pomodoro" | "until_event";
+
+/**
+ * One timer run on the Focus page (migration 0007). Elapsed time is computed from the timestamps, never from ticks:
+ * elapsed = (ended_at ?? paused_at ?? now) - started_at - paused_ms. At most one session is open (ended_at null).
+ */
+export interface FocusSession {
+  id: string;
+  task_id: string | null;
+  kind: "work" | "break";
+  mode: FocusMode;
+  /** Target length for countdown/pomodoro/until_event; null for a stopwatch. */
+  planned_seconds: number | null;
+  started_at: string;
+  /** Set while paused. */
+  paused_at: string | null;
+  /** Total paused time before the current pause, in milliseconds. */
+  paused_ms: number;
+  ended_at: string | null;
+  created_at: string;
 }
 
 export interface HoursLog {
@@ -100,7 +137,7 @@ export interface GEvent {
   read_only: boolean;
 }
 
-export type Table = "lists" | "tasks" | "hours_logs" | "calendars" | "settings";
+export type Table = "lists" | "tasks" | "hours_logs" | "calendars" | "settings" | "focus_sessions";
 export type RowOf<T extends Table> = T extends "lists"
   ? List
   : T extends "tasks"
@@ -109,4 +146,6 @@ export type RowOf<T extends Table> = T extends "lists"
       ? HoursLog
       : T extends "settings"
         ? SettingsRow
-        : CalendarRow;
+        : T extends "focus_sessions"
+          ? FocusSession
+          : CalendarRow;

@@ -10,10 +10,11 @@ import type { SyncDelta } from "./google/client";
 import { resolveListTags, type EventPatch } from "./google/mapping";
 import { DEFAULT_REMINDER_SETTINGS, DEFAULT_SETTINGS_ROW, sanitizeSettings, type ReminderSettings } from "./reminders";
 import { EVENT_CHECKS_KEY, toggleEventCheck, type EventCheck } from "./event-checks";
+import { end as endSession, extend as extendSession, isOpen as isSessionOpen, newSession, pause as pauseSession, resume as resumeSession } from "./focus";
 import { optimisticRemove, optimisticUpsert } from "./optimistic";
 import { newTask, toggleTaskComplete } from "./tasks";
 import { useUi } from "./ui";
-import type { CalendarRow, GEvent, HoursLog, List, RowOf, Table, Task } from "./types";
+import type { CalendarRow, FocusSession, GEvent, HoursLog, List, RowOf, Table, Task } from "./types";
 import { uid } from "./dates";
 
 const REFRESH_MS = 60_000;
@@ -46,6 +47,8 @@ export function useSaveReminderSettings() {
   return useCallback((patch: Partial<ReminderSettings>) => upsert({ ...DEFAULT_SETTINGS_ROW, ...current, ...patch }), [upsert, current]);
 }
 export const useHours = (): HoursLog[] => useRows("hours_logs").data ?? [];
+/** Focus page timer runs (migration 0007). Empty until loaded, or if 0007 hasn't been applied yet. */
+export const useFocusSessions = (): FocusSession[] => useRows("focus_sessions").data ?? [];
 
 /** Optimistic upsert/remove for one table. Failure rolls back, tells the user, and resolves false so callers can stop. */
 export function useRowMutations<T extends Table>(table: T) {
@@ -88,6 +91,47 @@ export function useTaskActions() {
   const toggleComplete = useCallback((task: Task) => toggleTaskComplete(task, upsert, toast), [upsert, toast]);
 
   return { create, update, toggleComplete, remove };
+}
+
+// ---------------------------------------------------------------- focus
+
+/** The one open Focus session (started on any device), or undefined. */
+export function useOpenFocusSession(): FocusSession | undefined {
+  const sessions = useFocusSessions();
+  return useMemo(() => sessions.find(isSessionOpen), [sessions]);
+}
+
+/**
+ * Timer controls for the Focus page and the shell pill. Each call saves optimistically and resolves to the saved
+ * session, or null when the save failed (the user has already been told). Only one session may be open (a unique index
+ * enforces it), so `start` ends every open one first and stops if that fails.
+ */
+export function useFocusActions() {
+  const qc = useQueryClient();
+  const { upsert } = useRowMutations("focus_sessions");
+
+  const start = useCallback(
+    async (p: Parameters<typeof newSession>[0]) => {
+      // Look at the server first: a session started on another device may not be in this device's cache yet.
+      let rows: FocusSession[];
+      try {
+        rows = await qc.fetchQuery({ queryKey: ["focus_sessions"], queryFn: () => repo.list("focus_sessions"), staleTime: 0 });
+      } catch {
+        rows = qc.getQueryData<FocusSession[]>(["focus_sessions"]) ?? [];
+      }
+      for (const s of rows.filter(isSessionOpen)) if (!(await upsert(endSession(s, p.now)))) return null;
+      const next = newSession(p);
+      return (await upsert(next)) ? next : null;
+    },
+    [qc, upsert],
+  );
+
+  const save = useCallback(async (next: FocusSession) => ((await upsert(next)) ? next : null), [upsert]);
+  const pause = useCallback((s: FocusSession) => save(pauseSession(s, Date.now())), [save]);
+  const resume = useCallback((s: FocusSession) => save(resumeSession(s, Date.now())), [save]);
+  const end = useCallback((s: FocusSession) => save(endSession(s, Date.now())), [save]);
+  const extend = useCallback((s: FocusSession, seconds: number) => save(extendSession(s, seconds)), [save]);
+  return { start, pause, resume, end, extend };
 }
 
 // ---------------------------------------------------------------- event checks

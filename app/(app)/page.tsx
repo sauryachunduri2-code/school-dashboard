@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ListDot } from "@/components/bits";
 import { DayBody } from "@/components/day-timeline";
 import { HOME_COLUMNS, HomeTop } from "@/components/home-top";
+import { Inbox } from "@/components/inbox";
 import { QuickAdd } from "@/components/quickadd";
 import { TaskCheck } from "@/components/task-row";
 import { UntimedRoll, UntimedStrip } from "@/components/untimed";
@@ -78,7 +79,8 @@ export default function HomePage() {
   const labels = useMemo(() => dates.map((d) => format(d, "EEE MMM d")), [dates]);
 
   const flagged = useMemo(() => tasks.filter((t) => t.flagged && !t.completed_at).sort((a, b) => (a.due_at ?? "9").localeCompare(b.due_at ?? "9")), [tasks]);
-  const anytime = useMemo(() => tasks.filter((t) => !t.due_at && !t.completed_at), [tasks]);
+  // Undated tasks with no list live in the Inbox above, so they aren't listed twice.
+  const anytime = useMemo(() => tasks.filter((t) => !t.due_at && !t.completed_at && t.list_id), [tasks]);
 
   const { active, ref: dayRef } = useActiveDay(DAYS, todayKey);
 
@@ -88,6 +90,7 @@ export default function HomePage() {
     <div>
       <QuickAdd className="mb-5" />
       <HomeTop now={now} />
+      <Inbox className="mt-6" />
 
       <div className={`mt-8 grid gap-x-8 gap-y-6 ${HOME_COLUMNS}`}>
         <section aria-labelledby="week-title" className="min-w-0">

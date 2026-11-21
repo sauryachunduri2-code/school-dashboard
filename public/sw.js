@@ -1,11 +1,33 @@
 /* School Dashboard service worker: push notifications + a small offline shell. */
 importScripts("/due-line.js"); // defines dueLine(data, now)
 
-const CACHE = "sd-shell-v1";
-const SHELL = ["/"];
+const CACHE = "sd-shell-v2";
+// Every app page is kept, not just Home: on a network that blocks the site (school Wi-Fi blocks *.vercel.app)
+// tapping Calendar should open Calendar. Data still loads, since it comes straight from Supabase.
+const PAGES = ["/", "/calendar", "/areas", "/focus", "/hours", "/settings"];
+
+/** Saves a page and the build files its HTML points at, so it can start with no network at all. */
+async function cachePage(cache, path) {
+  const res = await fetch(path, { credentials: "same-origin" });
+  if (!res.ok || res.redirected) return; // signed out: don't keep the login redirect as this page
+  const html = await res.clone().text();
+  await cache.put(path, res);
+  const assets = [...new Set(html.match(/\/_next\/static\/[^"'\s)\\]+/g) || [])];
+  await Promise.all(
+    assets.map((a) =>
+      cache
+        .match(a)
+        .then((hit) => hit || fetch(a).then((r) => (r.ok ? cache.put(a, r) : undefined)))
+        .catch(() => {}),
+    ),
+  );
+}
+const cacheAllPages = () => caches.open(CACHE).then((c) => Promise.all(PAGES.map((p) => cachePage(c, p).catch(() => {}))));
+// Pages are re-saved once each time the worker starts and the network works, so they follow new deploys.
+let refreshed = false;
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));
+  event.waitUntil(cacheAllPages().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -47,11 +69,21 @@ self.addEventListener("fetch", (event) => {
         .then((res) => {
           if (res.ok && !res.redirected) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
+            caches.open(CACHE).then((c) => c.put(url.pathname, copy));
+            if (!refreshed) {
+              refreshed = true;
+              const all = cacheAllPages();
+              try {
+                event.waitUntil(all);
+              } catch {
+                // the browser may refuse to extend the event this late; the save still runs
+              }
+            }
           }
           return res;
         })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match("/"))),
+        // The saved copy of this page; Home only for a page that was never saved.
+        .catch(() => caches.match(url.pathname, { ignoreSearch: true }).then((hit) => hit || caches.match("/"))),
     );
   }
 });

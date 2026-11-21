@@ -9,7 +9,8 @@ import { useLists, useTasks } from "@/lib/hooks";
 import { useUi } from "@/lib/ui";
 import { EditorDialog } from "./editor";
 import { Mounted } from "./mounted";
-import { IconAreas, IconCalendar, IconClock, IconHome, IconPlus, IconSearch, IconSettings } from "./icons";
+import { FocusPill } from "./focus/pill";
+import { IconAreas, IconCalendar, IconClock, IconFocus, IconHome, IconPlus, IconSearch, IconSettings } from "./icons";
 import { QuickAddDialog } from "./quickadd";
 import { SearchDialog } from "./search";
 import { ThemeToggle } from "./theme-toggle";
@@ -19,6 +20,7 @@ const NAV = [
   { href: "/calendar", label: "Calendar", icon: IconCalendar, hint: "G C" },
   { href: "/areas", label: "Areas", icon: IconAreas, hint: "G A" },
   { href: "/hours", label: "Hours", icon: IconClock, hint: "G L" },
+  { href: "/focus", label: "Focus", icon: IconFocus, hint: "G F" },
   { href: "/settings", label: "Settings", icon: IconSettings, hint: "G S" },
 ];
 
@@ -81,15 +83,23 @@ function Shortcuts() {
 
       if (gPending.current && Date.now() - gPending.current < 1200) {
         gPending.current = null;
-        const dest: Record<string, string> = { h: "/", c: "/calendar", l: "/hours", a: "/areas", s: "/settings" };
+        const dest: Record<string, string> = { h: "/", c: "/calendar", l: "/hours", a: "/areas", f: "/focus", s: "/settings" };
         if (dest[k]) {
           e.preventDefault();
           router.push(dest[k]);
         }
         return;
       }
+      // The Focus page owns the plain keys (Space, B, N, F, +); only the "G x" chords still work there.
+      if (path.startsWith("/focus")) {
+        if (k === "g") gPending.current = Date.now();
+        return;
+      }
       if (k === "g") gPending.current = Date.now();
-      else if (k === "n") {
+      else if (k === "f") {
+        e.preventDefault();
+        router.push("/focus");
+      } else if (k === "n") {
         e.preventDefault();
         ui.setQuickAddOpen(true);
       } else if (e.key === "/") {
@@ -116,10 +126,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const tasks = useTasks();
   void lists;
   const openCount = tasks.filter((t) => !t.completed_at).length;
+  // The Focus page covers the app; keep the hidden chrome out of the tab order.
+  const inert = path.startsWith("/focus") || undefined;
 
   return (
     <div className="relative z-[1] min-h-dvh md:flex">
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-rule px-4 py-6 md:flex">
+      <aside inert={inert} className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-rule px-4 py-6 md:flex">
         <Link href="/" className="display mb-8 px-2 text-2xl leading-none italic">
           Daybook
           <span className="mt-1 block text-[0.7rem] not-italic tracking-wide text-ink3" style={{ fontFamily: "var(--f-body)" }}>
@@ -161,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-rule bg-paper/90 px-4 py-2 backdrop-blur md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+        <header inert={inert} className="sticky top-0 z-30 flex items-center justify-between border-b border-rule bg-paper/90 px-4 py-2 backdrop-blur md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
           <Link href="/" className="display text-xl italic">
             Daybook
           </Link>
@@ -170,6 +182,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button className="btn btn-ghost !px-2" aria-label="Search" onClick={() => setSearchOpen(true)}>
               <IconSearch />
             </button>
+            <Link href="/focus" className="btn btn-ghost !px-2" aria-label="Focus">
+              <IconFocus />
+            </Link>
             <Link href="/settings" className="btn btn-ghost !px-2" aria-label="Settings">
               <IconSettings />
             </Link>
@@ -183,7 +198,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="w-full min-w-0 flex-1 px-4 pb-32 pt-5 md:px-8 md:pb-16 md:pt-9 2xl:px-12"><Mounted>{children}</Mounted></main>
       </div>
 
-      <nav aria-label="Main" className="safe-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-rulestrong bg-paper/95 backdrop-blur md:hidden">
+      <nav aria-label="Main" inert={inert} className="safe-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-rulestrong bg-paper/95 backdrop-blur md:hidden">
         {[NAV[0], NAV[1], null, NAV[2], NAV[3]].map((n, i) =>
           n ? (
             <Link
@@ -210,6 +225,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <QuickAddDialog />
       <SearchDialog />
       <EditorDialog />
+      <FocusPill />
       <Toasts />
     </div>
   );

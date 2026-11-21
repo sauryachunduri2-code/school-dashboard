@@ -269,3 +269,25 @@ describe("quick-add parser: takes", () => {
     expect(task("essay takes 30h").durationMin).toBeNull();
   });
 });
+
+describe("quick-add parser: full weekday names", () => {
+  it("every tuesday and thursday", () => {
+    const t = task("piano every tuesday and thursday");
+    expect(t.rrule).toBe("RRULE:FREQ=WEEKLY;BYDAY=TU,TH");
+    expect(t.title).toBe("piano");
+  });
+  it("every month is not every monday", () => {
+    const t = task("pay dues every month");
+    expect(t.rrule).toBe("RRULE:FREQ=MONTHLY");
+    expect(t.title).toBe("pay dues");
+  });
+});
+
+describe("quick-add parser: SAT", () => {
+  it("SAT in capitals is the exam", () => {
+    const t = task("SAT on dec 5 at 8am");
+    expect(t.title).toBe("SAT");
+    expect(ymd(t.due)).toBe("2026-12-5");
+  });
+  it("sat in lowercase is still Saturday", () => expect(ymd(task("practice sat").due)).toBe("2026-11-7"));
+});

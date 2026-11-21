@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { format, formatTime } from "@/lib/dates";
 import { checkSet } from "@/lib/event-checks";
+import { DAY_END_HOUR, tonightCapacity } from "@/lib/free";
 import { useEventCheckToggle, useEventChecks, useGoogleEvents, useHours, useLists, useTaskActions, useTasks } from "@/lib/hooks";
 import {
   buildTodoList,
@@ -21,7 +22,7 @@ import { formatTakes } from "@/lib/timeline";
 import { useUi } from "@/lib/ui";
 import { ListDot } from "./bits";
 import { IconRepeat, IconStar, InkCheck } from "./icons";
-import { TaskCheck } from "./task-row";
+import { FocusLink, StepBadge, TaskCheck } from "./task-row";
 
 /** Same column split as the 7-day section below, so the to-do list sits right above the side panel. */
 export const HOME_COLUMNS = "lg:grid-cols-[minmax(0,1fr)_clamp(280px,22vw,400px)]";
@@ -195,7 +196,7 @@ function TodoRow({ item, now }: { item: TodoItem; now: Date }) {
   const list = lists.find((l) => l.id === item.listId);
   const open = () => (item.task ? openEditor({ kind: "task", task: item.task }) : item.event && openEditor({ kind: "event", event: item.event }));
   return (
-    <li className="todo-row flex min-h-10 items-center gap-2.5 border-t border-rule py-1 first:border-t-0" data-done={item.done} data-overdue={item.overdue || undefined} data-todo-key={item.key} style={{ opacity: item.done ? 0.5 : 1 }}>
+    <li className="todo-row group flex min-h-10 items-center gap-2.5 border-t border-rule py-1 first:border-t-0" data-done={item.done} data-overdue={item.overdue || undefined} data-todo-key={item.key} style={{ opacity: item.done ? 0.5 : 1 }}>
       {item.task ? (
         <TaskCheck done={item.done} label={`Complete ${item.title}`} onToggle={() => void taskActions.toggleComplete(item.task!)} />
       ) : (
@@ -207,7 +208,9 @@ function TodoRow({ item, now }: { item: TodoItem; now: Date }) {
         <ListDot color={list?.color ?? "var(--ink-3)"} size={8} />
         <span className={`todo-title truncate text-[0.95rem] ${item.overdue ? "font-medium text-overdue" : ""}`}>{item.title}</span>
         {item.task?.rrule && <IconRepeat width={12} height={12} className="shrink-0 text-ink3" aria-label="Repeats" />}
+        {item.task && <StepBadge task={item.task} />}
       </button>
+      {item.task && !item.done && <FocusLink task={item.task} />}
       <span className={`num shrink-0 text-xs ${item.overdue ? "text-overdue" : "text-ink3"}`}>{timeLabel(item, now)}</span>
     </li>
   );
@@ -242,11 +245,50 @@ export function TodoToday({ now }: { now: Date }) {
   );
 }
 
+/** Tonight's work against the free time left before the day end: a meter, the totals, and whether it fits. */
+function TonightBar({ now }: { now: Date }) {
+  const tasks = useTasks();
+  const events = useGoogleEvents();
+  const cap = useMemo(() => tonightCapacity({ tasks, events, now }), [tasks, events, now]);
+  if (cap.workMinutes === 0 && now.getHours() >= DAY_END_HOUR) return null;
+
+  const work = cap.workMinutes;
+  const free = cap.freeMinutes;
+  const total = work + free;
+  const over = work - free;
+  const status = over > 0 ? `about ${formatTakes(over)} over` : "fits";
+  const meter = `${formatTakes(work)} of work, ${formatTakes(free)} free before ${DAY_END_HOUR > 12 ? DAY_END_HOUR - 12 : DAY_END_HOUR} ${DAY_END_HOUR >= 12 ? "PM" : "AM"}, ${status}`;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm" data-tonight>
+      <span className="display text-base">Tonight</span>
+      <span
+        role="meter"
+        aria-label={`Tonight's work against free time, ${cap.taskCount} ${cap.taskCount === 1 ? "task" : "tasks"}`}
+        aria-valuemin={0}
+        aria-valuemax={total || 1}
+        aria-valuenow={work}
+        aria-valuetext={meter}
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-rulestrong order-last basis-full sm:order-none sm:w-40 sm:basis-auto"
+      >
+        {total > 0 && <span className={`h-full ${over > 0 ? "bg-overdue" : "bg-accent"}`} style={{ width: `${(work / total) * 100}%` }} />}
+      </span>
+      <span className="num text-ink2">
+        <span className="text-ink">{formatTakes(work)}</span> of work · <span className="text-ink">{formatTakes(free)}</span> free before {DAY_END_HOUR > 12 ? DAY_END_HOUR - 12 : DAY_END_HOUR} {DAY_END_HOUR >= 12 ? "PM" : "AM"}
+      </span>
+      <span className={over > 0 ? "num font-medium text-overdue" : "text-ink3"}>{status}</span>
+    </div>
+  );
+}
+
 export function HomeTop({ now }: { now: Date }) {
   return (
-    <div className={`grid items-start gap-x-8 gap-y-5 ${HOME_COLUMNS}`}>
-      <Insights now={now} />
-      <TodoToday now={now} />
+    <div className="grid gap-y-3">
+      <TonightBar now={now} />
+      <div className={`grid items-start gap-x-8 gap-y-5 ${HOME_COLUMNS}`}>
+        <Insights now={now} />
+        <TodoToday now={now} />
+      </div>
     </div>
   );
 }

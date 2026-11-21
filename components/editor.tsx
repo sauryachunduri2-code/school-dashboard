@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { format, parseYmd, ymd } from "@/lib/dates";
 import { eventRange, exclusiveEndYmd, inclusiveLastDay } from "@/lib/agenda";
 import {
@@ -15,13 +16,15 @@ import {
 import { alertChoiceOf, alertPatch, type AlertChoice } from "@/lib/google/mapping";
 import { buildRrule, describeRrule, parseRepeat, type Repeat } from "@/lib/recurrence";
 import { CUSTOM_OFFSET_CHOICES, offsetLabel, sanitizeReminders } from "@/lib/reminders";
+import { moveStep, newStep, removeStep, renameStep, stepProgress, stepsOf, toggleStep } from "@/lib/steps";
 import { DEFAULT_TAKES, formatTakes } from "@/lib/timeline";
-import type { CalendarRow, GEvent, List, Task, TaskReminder } from "@/lib/types";
+import type { CalendarRow, GEvent, List, Task, TaskReminder, TaskStep } from "@/lib/types";
 import { useUi, type EditorTarget } from "@/lib/ui";
 import { ListSelect, StarFlag } from "./bits";
 import { Dialog } from "./dialog";
 import { ReminderPicker } from "./reminder-picker";
-import { IconTrash } from "./icons";
+import { IconPlus, IconTrash, IconX } from "./icons";
+import { TaskCheck } from "./task-row";
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -182,8 +185,102 @@ function EditorBody({ target, onClose }: { target: EditorTarget; onClose: () => 
 
 // ------------------------------------------------------------------ task
 
+/** Pasted text becomes one step per line; bullets and checkbox marks are dropped. */
+const stepLines = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:[-*\u2022]\s+)?(?:\[[ xX]?\]\s*)?/, "").trim())
+    .filter(Boolean);
+
+/** A task's checklist. Edits stay in the draft until the task is saved. Alt+Up/Down reorders the focused step. */
+function StepsEditor({ steps, onChange }: { steps: TaskStep[]; onChange: (s: TaskStep[]) => void }) {
+  const [draft, setDraft] = useState("");
+  const addRef = useRef<HTMLInputElement>(null);
+  const { done, total } = stepProgress({ steps });
+  const add = (titles: string[]) => {
+    if (titles.length) onChange([...steps, ...titles.map(newStep)]);
+  };
+  return (
+    <div role="group" aria-labelledby="steps-label">
+      <div className="mb-1 flex items-baseline gap-2 text-sm font-medium text-ink2">
+        <span id="steps-label">Steps</span>
+        {total > 0 && (
+          <span className="num text-xs font-normal text-ink3" aria-label={`${done} of ${total} done`}>
+            {done}/{total}
+          </span>
+        )}
+      </div>
+      <ul className="grid gap-0.5">
+        {steps.map((s) => (
+          <li key={s.id} className="group flex items-center gap-2">
+            <TaskCheck done={s.done} label={`Mark step done: ${s.title}`} onToggle={() => onChange(toggleStep(steps, s.id))} />
+            <input
+              className={`min-h-9 min-w-0 flex-1 rounded bg-transparent px-1.5 text-sm outline-none hover:bg-sheet2 focus:bg-sheet2 ${s.done ? "text-ink3 line-through" : ""}`}
+              aria-label="Step"
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+              value={s.title}
+              onChange={(e) => onChange(renameStep(steps, s.id, e.target.value))}
+              onBlur={() => {
+                if (!s.title.trim()) onChange(removeStep(steps, s.id));
+              }}
+              onKeyDown={(e) => {
+                if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                  e.preventDefault();
+                  onChange(moveStep(steps, s.id, e.key === "ArrowUp" ? -1 : 1));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  addRef.current?.focus();
+                }
+              }}
+            />
+            <button
+              type="button"
+              aria-label={`Delete step: ${s.title}`}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded text-ink3 hover:text-overdue focus-visible:opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100 pointer-coarse:opacity-100"
+              onClick={() => onChange(removeStep(steps, s.id))}
+            >
+              <IconX width={14} height={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-1 flex items-center gap-2">
+        <span aria-hidden className="grid h-[22px] w-[22px] shrink-0 place-items-center text-ink3">
+          <IconPlus width={14} height={14} />
+        </span>
+        <input
+          ref={addRef}
+          className="min-h-9 min-w-0 flex-1 rounded bg-transparent px-1.5 text-sm outline-none placeholder:text-ink3 hover:bg-sheet2 focus:bg-sheet2"
+          placeholder="Add a step"
+          aria-label="Add a step"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            add(stepLines(draft).slice(0, 1));
+            setDraft("");
+          }}
+          onBlur={() => {
+            add(stepLines(draft));
+            setDraft("");
+          }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
+            if (!/[\r\n]/.test(text.trim())) return;
+            e.preventDefault();
+            add(stepLines(draft + text));
+            setDraft("");
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function TaskForm({ target, lists, isNew, onClose }: { target: EditorTarget; lists: List[]; isNew: boolean; onClose: () => void }) {
   const actions = useTaskActions();
+  const router = useRouter();
   const seed: Task | null = target.kind === "task" ? target.task : null;
   const seedDraft = target.kind === "event" ? target.draft : undefined;
 
@@ -201,13 +298,14 @@ function TaskForm({ target, lists, isNew, onClose }: { target: EditorTarget; lis
   const [reminders, setReminders] = useState<TaskReminder[]>(() => sanitizeReminders(seed?.reminders));
   const [starred, setStarred] = useState(seed?.starred ?? false);
   const [flagged, setFlagged] = useState(seed?.flagged ?? false);
+  const [steps, setSteps] = useState<TaskStep[]>(() => stepsOf(seed ?? {}));
 
   const due = useMemo(() => {
     if (!date) return null;
     return allDay ? combine(date, "00:00") : combine(date, time);
   }, [date, time, allDay]);
 
-  async function save() {
+  async function save(then?: string) {
     if (!title.trim()) return;
     const patch: Partial<Task> = {
       title: title.trim(),
@@ -225,9 +323,13 @@ function TaskForm({ target, lists, isNew, onClose }: { target: EditorTarget; lis
     // Only written when set, or to clear a stored value, so saving works on a database that predates migration 0005.
     if (due && !allDay && takes != null) patch.duration_minutes = takes;
     else if (seed?.duration_minutes !== undefined) patch.duration_minutes = null;
+    // Same for steps: never sent to a task that has none, so saving works on a database that predates migration 0007.
+    const kept = steps.filter((s) => s.title.trim());
+    if (kept.length || seed?.steps !== undefined) patch.steps = kept;
     if (seed && !isNew) await actions.update(seed, patch);
     else await actions.create({ ...patch, title: title.trim() });
     onClose();
+    if (then) router.push(then);
   }
 
   return (
@@ -270,6 +372,8 @@ function TaskForm({ target, lists, isNew, onClose }: { target: EditorTarget; lis
         <ReminderPicker due={due} allDay={allDay} settings={settings} remindDefault={remindDefault} onRemindDefault={setRemindDefault} reminders={reminders} onReminders={setReminders} />
       </Field>
 
+      <StepsEditor steps={steps} onChange={setSteps} />
+
       <Field label="Notes">
         <textarea className="field min-h-20" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
@@ -290,6 +394,11 @@ function TaskForm({ target, lists, isNew, onClose }: { target: EditorTarget; lis
           <span />
         )}
         <div className="flex gap-2">
+          {seed && !isNew && (
+            <button type="button" className="btn btn-ghost" disabled={!title.trim()} onClick={() => void save(`/focus?task=${encodeURIComponent(seed.id)}`)}>
+              Focus
+            </button>
+          )}
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>

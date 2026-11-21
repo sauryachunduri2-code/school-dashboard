@@ -319,6 +319,21 @@ body::before {
   animation: fade 120ms ease-out both;
 }
 
+/* Quick-add mic while it's listening: a slow ring, so it's clear the app can hear you. */
+@keyframes listening {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+.mic-listening {
+  background: var(--accent);
+  color: var(--accent-ink);
+  animation: listening 1.2s ease-out infinite;
+}
+
 /* Scrollbars that don't shout */
 * {
   scrollbar-width: thin;
@@ -466,4 +481,65 @@ body::before {
 }
 .todo-row[data-done="true"] .todo-title {
   background-size: 100% 1px;
+}
+
+/* ---- Focus page (components/focus) ---------------------------------------------------------------------- */
+
+/* The ring fills a little each second; the dot riding its end moves with it. */
+.focus-arc {
+  transition: stroke-dashoffset 1s linear;
+}
+
+/* Paused: the digits breathe instead of blinking. */
+@keyframes focus-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.focus-breathe {
+  animation: focus-breathe 2.8s ease-in-out infinite;
+}
+/* The open dot beside today's focus total while a session runs. */
+@keyframes focus-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.focus-pulse {
+  animation: focus-pulse 2s ease-in-out infinite;
+}
+.focus-over {
+  color: var(--margin);
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-breathe { animation: none !important; opacity: 0.55; }
+  .focus-pulse { animation: none !important; }
+  .focus-arc { transition: none !important; }
+}
+
+/* Everything that isn't the clock fades out in dim mode and comes back when you reach for it. */
+.focus-aux {
+  transition: opacity 500ms ease;
+}
+
+/* Dim mode: near-black, low-contrast ink, a muted accent. Scoped to the layer, so the rest of the app keeps its theme. */
+.focus-layer[data-dim="true"] {
+  color-scheme: dark;
+  --paper: #0a0806;
+  --sheet: #100c09;
+  --sheet-2: #17120d;
+  --ink: #8a7d68;
+  --ink-2: #5f5646;
+  --ink-3: #453e33;
+  --rule: rgba(236, 225, 204, 0.06);
+  --rule-strong: rgba(236, 225, 204, 0.12);
+  --accent: #8c6a36;
+  --accent-ink: #0a0806;
+  --margin: #7a4c35;
+  --ecs: #566b49;
+  --overdue: #8f5547;
+}
+.focus-layer[data-dim="true"] .focus-aux:not(:hover):not(:focus-within) {
+  opacity: 0;
+}
+.focus-layer[data-dim="true"] .focus-keep {
+  opacity: 0.8;
 }

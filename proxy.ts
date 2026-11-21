@@ -2,8 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { OWNER_EMAIL, SUPABASE_ANON_KEY, SUPABASE_URL, localMode, supabaseConfigured } from "@/lib/env";
 
-const PUBLIC_PREFIXES = ["/login", "/privacy","/auth/", "/api/cron/", "/sw.js", "/due-line.js", "/manifest.webmanifest", "/pwa-icon", "/favicon"];
+const PUBLIC_PREFIXES = ["/login", "/privacy","/auth/", "/api/cron/", "/api/rise/", "/sw.js", "/due-line.js", "/manifest.webmanifest", "/pwa-icon", "/favicon"];
 
+// /api/rise/* authenticates itself with a bearer token from the Rise iPhone app (lib/brief/auth.ts), like /api/cron/ does with its secret.
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();

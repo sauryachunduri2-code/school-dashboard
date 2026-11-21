@@ -37,6 +37,9 @@ export const IconFlag = ({ filled, ...p }: SVGProps<SVGSVGElement> & { filled?: 
 export const IconPlus = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>
 );
+export const IconMic = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" /></svg>
+);
 export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
 );
@@ -74,4 +77,30 @@ export function InkCheck() {
 }
 export const IconX = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M6 6l12 12M18 6 6 18" /></svg>
+);
+
+// Focus page
+export const IconFocus = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.2" /></svg>
+);
+export const IconPlay = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M8 5.5v13l10.5-6.5z" /></svg>
+);
+export const IconPause = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M9 5.5v13M15 5.5v13" strokeWidth={2.4} /></svg>
+);
+export const IconCoffee = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M5 9h11v5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM16 10h1.5a2.5 2.5 0 0 1 0 5H16M8.5 3.5v2M12 3.5v2" /></svg>
+);
+export const IconFullscreen = ({ exit, ...p }: SVGProps<SVGSVGElement> & { exit?: boolean }) => (
+  <svg {...base(p)}>{exit ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}</svg>
+);
+export const IconPip = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="3.5" y="5" width="17" height="14" rx="2" /><rect x="11.5" y="11.5" width="7" height="5" rx="1" fill="currentColor" stroke="none" /></svg>
+);
+export const IconBellOff = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M6 17V11a6 6 0 0 1 9.5-4.9M18 11v6l1.5 2H8M10 21h4M4 4l16 16" /></svg>
+);
+export const IconSkip = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M6 6l8 6-8 6zM18 6v12" /></svg>
 );

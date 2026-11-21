@@ -38,7 +38,8 @@ export interface ParsedHours {
 }
 export type Parsed = ParsedTask | ParsedEvent | ParsedHours | { kind: "empty" };
 
-const DAY_RE = "(?:sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?)";
+// Longest spelling first, so "tuesday" isn't read as "tues" + "day".
+const DAY_RE = "(?:sun(?:day)?|mon(?:day)?|tue(?:sday|s)?|wed(?:nesday)?|thu(?:rsday|rs|r)?|fri(?:day)?|sat(?:urday)?)";
 const CLOCK = "(?:\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)|noon|midnight)";
 const REL_DAY = `(?:today|tomorrow|tonight|(?:next\\s+)?${DAY_RE})`;
 const REMIND_CLOCK_RE = new RegExp(
@@ -81,7 +82,7 @@ function parseRepeat(text: string, now: Date): [string, string | null] {
   let repeat: Repeat | null = null;
   let m: RegExpMatchArray | null;
 
-  [rest, m] = stripOnce(rest, new RegExp(`\\bevery\\s+((?:${DAY_RE}(?:\\s*(?:,|and|&)\\s*)?)+)`, "i"));
+  [rest, m] = stripOnce(rest, new RegExp(`\\bevery\\s+((?:${DAY_RE}\\b(?:\\s*(?:,|and|&)\\s*)?)+)`, "i"));
   if (m) {
     const days = [...m[1].matchAll(new RegExp(DAY_RE, "gi"))].map((x) => dayIdx(x[0]));
     repeat = { freq: "weekly", days };
@@ -233,7 +234,8 @@ export function parseQuickAdd(input: string, lists: List[], now: Date = new Date
 
   // ---- date / time
   const results = chrono.en.casual.parse(text, now, { forwardDate: true });
-  const hit = results[0];
+  // "SAT" in capitals is the exam, not Saturday
+  const hit = results.find((r) => r.text.trim() !== "SAT");
   let due: Date | null = null;
   let end: Date | null = null;
   let allDay = true;

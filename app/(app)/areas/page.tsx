@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { Empty, ListDot, ListTag, StarFlag } from "@/components/bits";
 import { IconRepeat } from "@/components/icons";
+import { Inbox } from "@/components/inbox";
 import { QuickAdd } from "@/components/quickadd";
-import { TaskCheck } from "@/components/task-row";
+import { FocusLink, StepBadge, TaskCheck } from "@/components/task-row";
 import { format } from "@/lib/dates";
 import { describeRrule } from "@/lib/recurrence";
 import { useLists, useTaskActions, useTasks } from "@/lib/hooks";
@@ -28,17 +29,19 @@ function TaskLine({ task, list, showList }: { task: Task; list?: List; showList:
   const { openEditor } = useUi();
   const overdue = isOverdue(task);
   return (
-    <div className="flex min-h-[44px] items-center gap-3 border-b border-rule px-3 py-1.5">
+    <div className="group flex min-h-[44px] items-center gap-3 border-b border-rule px-3 py-1.5">
       <TaskCheck done={!!task.completed_at} label={`Complete ${task.title}`} onToggle={() => actions.toggleComplete(task)} />
       <button className="flex min-w-0 flex-1 items-baseline gap-2 text-left" onClick={() => openEditor({ kind: "task", task })}>
         <span className={`truncate ${task.completed_at ? "text-ink3 line-through" : ""}`}>{task.title}</span>
         {task.rrule && <IconRepeat width={13} height={13} className="shrink-0 self-center text-ink3" aria-label={describeRrule(task.rrule)} />}
+        <StepBadge task={task} className="self-center" />
         {showList && (
           <span className="hidden shrink-0 sm:inline">
             <ListTag list={list} />
           </span>
         )}
       </button>
+      {!task.completed_at && <FocusLink task={task} />}
       {task.due_at && (
         <span className={`num shrink-0 text-xs ${overdue ? "font-semibold text-overdue" : "text-ink3"}`}>
           {format(new Date(task.due_at), task.all_day ? "EEE, MMM d" : "EEE, MMM d · h:mm a")}
@@ -82,7 +85,9 @@ export default function AreasPage() {
     `flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${active ? "bg-sheet2 font-semibold" : "text-ink2 hover:bg-sheet2/70 hover:text-ink"}`;
 
   return (
-    <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-10">
+    <div>
+      <Inbox className="sheet mb-6 px-3 py-2" />
+      <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-10">
       <nav aria-label="Lists" className="grid content-start gap-5">
         <div className="grid gap-0.5">
           {SMART.map((s) => {
@@ -151,6 +156,7 @@ export default function AreasPage() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
