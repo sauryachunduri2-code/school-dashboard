@@ -1,8 +1,12 @@
 import { eventRange } from "./agenda";
+import { buildTodoList } from "./insights";
 import { addDays, startOfDay } from "./dates";
 import { isOverdue } from "./tasks";
 import { takesMinutes } from "./timeline";
 import type { GEvent, Task } from "./types";
+
+/** What an all-day to-do event counts as tonight, like an untimed task's default length. */
+const DEFAULT_EVENT_MINUTES = 30;
 
 export interface Span {
   start: Date;
@@ -43,19 +47,23 @@ export interface Capacity {
 }
 
 /**
- * What tonight holds. Work: open tasks due today or already overdue. Free: gaps from now until `dayEndHour` (local),
- * with timed events and open timed tasks (a block ending at its due time) as busy time.
+ * What tonight holds. Work: open tasks due today or already overdue, plus today's open to-do events (a timed one counts
+ * its length, an all-day one 30 minutes; `checked` holds the ones ticked off, see lib/event-checks.ts). Free: gaps from
+ * now until `dayEndHour` (local), with other timed events and open timed tasks (a block ending at its due time) as busy
+ * time. To-do events aren't busy time: they are the work being measured.
  */
 export function tonightCapacity({
   tasks,
   events,
   now,
+  checked = new Set<string>(),
   dayEndHour = DAY_END_HOUR,
   minGapMinutes = 15,
 }: {
   tasks: Task[];
   events: GEvent[];
   now: Date;
+  checked?: Set<string>;
   dayEndHour?: number;
   minGapMinutes?: number;
 }): Capacity {
@@ -68,7 +76,9 @@ export function tonightCapacity({
   });
 
   const dayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), dayEndHour);
-  const busy: Span[] = events.filter((e) => !e.all_day).map(eventRange);
+  const todoEvents = buildTodoList([], events, checked, now).filter((i) => i.kind === "event" && !i.done);
+  const eventMinutes = (e: GEvent) => (e.all_day ? DEFAULT_EVENT_MINUTES : Math.max(1, Math.round((+eventRange(e).end - +eventRange(e).start) / 60_000)));
+  const busy: Span[] = events.filter((e) => !e.all_day && !e.todo).map(eventRange);
   for (const t of tasks) {
     if (t.completed_at || !t.due_at || t.all_day) continue;
     const due = new Date(t.due_at);
@@ -77,8 +87,8 @@ export function tonightCapacity({
   const freeMinutes = now >= dayEnd ? 0 : freeGaps(busy, now, dayEnd, minGapMinutes).reduce((sum, g) => sum + g.minutes, 0);
 
   return {
-    workMinutes: work.reduce((sum, t) => sum + takesMinutes(t), 0),
+    workMinutes: work.reduce((sum, t) => sum + takesMinutes(t), 0) + todoEvents.reduce((sum, i) => sum + eventMinutes(i.event!), 0),
     freeMinutes,
-    taskCount: work.length,
+    taskCount: work.length + todoEvents.length,
   };
 }

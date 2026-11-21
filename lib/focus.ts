@@ -52,8 +52,39 @@ export function extend(s: FocusSession, seconds: number): FocusSession {
   return s.planned_seconds == null ? s : { ...s, planned_seconds: Math.max(1, s.planned_seconds + Math.round(seconds)) };
 }
 
+/** What a session is about: a Daybook task, or a calendar event flagged as a to-do. */
+export type FocusTarget = { kind: "task"; task: Task } | { kind: "event"; event: GEvent; item?: TodoItem };
+
+/** The target for a to-do list item, or null if it carries neither a task nor an event. */
+export function targetOf(item: TodoItem): FocusTarget | null {
+  if (item.task) return { kind: "task", task: item.task };
+  if (item.event) return { kind: "event", event: item.event, item };
+  return null;
+}
+
+/** Stable id of what a to-do item or target points at, for URLs, selection and comparing. */
+export const itemId = (i: Pick<TodoItem, "task" | "event">): string | null => (i.task ? `task:${i.task.id}` : i.event ? `event:${i.event.id}` : null);
+
+export const targetTitle = (t: FocusTarget): string => (t.kind === "task" ? t.task.title : t.event.summary);
+
+/**
+ * Points a session at a target. `event_id` and `title` are only written when they have a value, so a database
+ * without migration 0008 still accepts the row for a plain free-focus session.
+ */
+export function withTarget(s: FocusSession, target: FocusTarget | null): FocusSession {
+  const { event_id: _e, title: _t, ...rest } = s;
+  void _e;
+  void _t;
+  if (!target) return { ...rest, task_id: null };
+  return target.kind === "task"
+    ? { ...rest, task_id: target.task.id, title: target.task.title }
+    : { ...rest, task_id: null, event_id: target.event.id, title: target.event.summary };
+}
+
 export function newSession(p: {
   task_id: string | null;
+  event_id?: string | null;
+  title?: string | null;
   kind?: FocusSession["kind"];
   mode: FocusMode;
   planned_seconds?: number | null;
@@ -62,6 +93,8 @@ export function newSession(p: {
   return {
     id: uid(),
     task_id: p.task_id,
+    ...(p.event_id ? { event_id: p.event_id } : {}),
+    ...(p.title ? { title: p.title } : {}),
     kind: p.kind ?? "work",
     mode: p.mode,
     planned_seconds: p.planned_seconds ?? null,
@@ -185,34 +218,41 @@ export function eventSoon(events: GEvent[], now: Now, withinMin = 60): { event: 
 
 // ------------------------------------------------------------------ what to work on
 
+/** A to-do list item for a task that isn't on today's list (the starred/flagged fallback of suggestItem). */
+function itemOfTask(t: Task, now: Now): TodoItem {
+  const due = t.due_at ? new Date(t.due_at) : startOfDay(new Date(ms(now)));
+  return { key: `t:${t.id}`, kind: "task", title: t.title, at: due, dateOnly: !t.due_at || t.all_day, overdue: false, done: false, listId: t.list_id, task: t };
+}
+
+/** Open items on today's list (tasks and to-do events), in to-do order, for the "pick something" list. */
+export const pickableItems = (todo: TodoItem[]): TodoItem[] => todo.filter((i) => !i.done && !(i.task && i.task.completed_at));
+
 /**
- * What to focus on when nothing is chosen: the oldest overdue task, then today's soonest (timed before date-only),
- * then a starred or flagged open task (both beats one; earliest due first). null when there's nothing.
+ * What to focus on when nothing is chosen: the oldest overdue item, then today's soonest (timed before date-only;
+ * a to-do event counts like a task), then a starred or flagged open task (both beats one; earliest due first).
+ * null when there's nothing.
  */
-export function suggestTask(tasks: Task[], todo: TodoItem[], now: Now): Task | null {
-  void now;
-  const open = todo.filter((i) => i.kind === "task" && i.task && !i.done && !i.task.completed_at);
+export function suggestItem(tasks: Task[], todo: TodoItem[], now: Now): TodoItem | null {
+  const open = pickableItems(todo);
   const overdue = open.find((i) => i.overdue);
-  if (overdue) return overdue.task!;
+  if (overdue) return overdue;
   // buildTodoList already orders timed items by time, then date-only ones
-  if (open[0]) return open[0].task!;
+  if (open[0]) return open[0];
   const weight = (t: Task) => (t.starred ? 2 : 0) + (t.flagged ? 1 : 0);
   const marked = tasks
     .filter((t) => !t.completed_at && (t.starred || t.flagged))
     .sort((a, b) => weight(b) - weight(a) || (a.due_at ?? "9").localeCompare(b.due_at ?? "9") || a.title.localeCompare(b.title));
-  return marked[0] ?? null;
+  return marked[0] ? itemOfTask(marked[0], now) : null;
 }
 
-/** The next `n` open items on today's list, skipping the task being worked on. */
-export function upNextItems(todo: TodoItem[], currentTaskId: string | null, n = 3): TodoItem[] {
-  return todo.filter((i) => !i.done && !(i.task && i.task.id === currentTaskId)).slice(0, n);
+/** The next `n` open items on today's list, skipping the task or event being worked on. */
+export function upNextItems(todo: TodoItem[], current: { taskId?: string | null; eventId?: string | null } | string | null, n = 3): TodoItem[] {
+  const c = typeof current === "string" || current == null ? { taskId: current } : current;
+  return todo.filter((i) => !i.done && !(c.taskId && i.task && i.task.id === c.taskId) && !(c.eventId && i.event && i.event.id === c.eventId)).slice(0, n);
 }
-
-/** Open tasks on today's list, for the "pick something" list (the first one is the suggestion). */
-export const pickableTasks = (todo: TodoItem[]): Task[] => todo.filter((i) => i.kind === "task" && i.task && !i.done && !i.task.completed_at).map((i) => i.task!);
 
 /** How long an item is expected to take, in minutes: a task's estimate, or an event's length. */
-export function estimateMinutes(item: TodoItem): number | null {
+export function estimateMinutes(item: Pick<TodoItem, "task" | "event">): number | null {
   if (item.task) return takesMinutes(item.task);
   if (item.event && !item.event.all_day) {
     const r = eventRange(item.event);

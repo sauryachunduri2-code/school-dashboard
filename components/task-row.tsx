@@ -7,7 +7,7 @@ import { formatTime } from "@/lib/dates";
 import { describeRrule } from "@/lib/recurrence";
 import { stepProgress } from "@/lib/steps";
 import { useTaskActions } from "@/lib/hooks";
-import type { List, Task } from "@/lib/types";
+import type { GEvent, List, Task } from "@/lib/types";
 import { useUi } from "@/lib/ui";
 import { InkCheck, IconFlag, IconRepeat, IconStar } from "./icons";
 import { ListTag } from "./bits";
@@ -33,12 +33,13 @@ export function StepBadge({ task, className = "" }: { task: Task; className?: st
   );
 }
 
-/** Opens the Focus page on a task. Shows on row hover/focus on desktop, always on touch (needs a `group` parent). */
-export function FocusLink({ task }: { task: Task }) {
+/** Opens the Focus page on a task, or on a to-do event. Shows on row hover/focus on desktop, always on touch (needs a `group` parent). */
+export function FocusLink({ task, event }: { task?: Task; event?: GEvent }) {
+  if (!task && !event) return null;
   return (
     <Link
-      href={`/focus?task=${encodeURIComponent(task.id)}`}
-      aria-label={`Focus on ${task.title}`}
+      href={task ? `/focus?task=${encodeURIComponent(task.id)}` : `/focus?event=${encodeURIComponent(event!.id)}`}
+      aria-label={`Focus on ${task ? task.title : event!.summary}`}
       className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-ink3 hover:text-ink focus-visible:text-ink md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100 md:focus-visible:opacity-100 pointer-coarse:opacity-100"
     >
       <svg aria-hidden width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">

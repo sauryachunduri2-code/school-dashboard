@@ -210,7 +210,7 @@ function TodoRow({ item, now }: { item: TodoItem; now: Date }) {
         {item.task?.rrule && <IconRepeat width={12} height={12} className="shrink-0 text-ink3" aria-label="Repeats" />}
         {item.task && <StepBadge task={item.task} />}
       </button>
-      {item.task && !item.done && <FocusLink task={item.task} />}
+      {!item.done && (item.task || item.event) && <FocusLink task={item.task} event={item.event} />}
       <span className={`num shrink-0 text-xs ${item.overdue ? "text-overdue" : "text-ink3"}`}>{timeLabel(item, now)}</span>
     </li>
   );
@@ -247,9 +247,8 @@ export function TodoToday({ now }: { now: Date }) {
 
 /** Tonight's work against the free time left before the day end: a meter, the totals, and whether it fits. */
 function TonightBar({ now }: { now: Date }) {
-  const tasks = useTasks();
-  const events = useGoogleEvents();
-  const cap = useMemo(() => tonightCapacity({ tasks, events, now }), [tasks, events, now]);
+  const { tasks, events, checked } = useTodayData(now);
+  const cap = useMemo(() => tonightCapacity({ tasks, events, now, checked }), [tasks, events, now, checked]);
   if (cap.workMinutes === 0 && now.getHours() >= DAY_END_HOUR) return null;
 
   const work = cap.workMinutes;

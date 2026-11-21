@@ -3,10 +3,10 @@
 import { ListDot } from "@/components/bits";
 import { IconCalendar } from "@/components/icons";
 import { formatTime } from "@/lib/dates";
-import { estimateMinutes } from "@/lib/focus";
+import { estimateMinutes, itemId } from "@/lib/focus";
 import type { TodoItem } from "@/lib/insights";
-import { formatTakes, itemColor, takesMinutes } from "@/lib/timeline";
-import type { CalendarRow, GEvent, List, Task } from "@/lib/types";
+import { formatTakes, itemColor } from "@/lib/timeline";
+import type { CalendarRow, GEvent, List } from "@/lib/types";
 
 const Heading = ({ children }: { children: React.ReactNode }) => <h2 className="display mb-2 text-base">{children}</h2>;
 
@@ -25,8 +25,8 @@ export function EventWarning({ event, minutes }: { event: GEvent; minutes: numbe
   );
 }
 
-/** The next few things on today's list, each with its estimate. A task can be started right from here. */
-export function UpNext({ items, lists, calendars, onPick }: { items: TodoItem[]; lists: List[]; calendars: CalendarRow[]; onPick: (t: Task) => void }) {
+/** The next few things on today's list, each with its estimate. Any of them can be started right from here. */
+export function UpNext({ items, lists, calendars, onPick }: { items: TodoItem[]; lists: List[]; calendars: CalendarRow[]; onPick: (i: TodoItem) => void }) {
   return (
     <section aria-label="Up next" className="focus-aux min-w-0">
       <Heading>Up next</Heading>
@@ -52,13 +52,9 @@ export function UpNext({ items, lists, calendars, onPick }: { items: TodoItem[];
             );
             return (
               <li key={i.key}>
-                {i.task ? (
-                  <button type="button" className="flex w-full items-start gap-3 rounded-md px-3 py-1.5 text-left hover:bg-sheet2" onClick={() => onPick(i.task!)} aria-label={`Focus on ${i.title}`}>
-                    {body}
-                  </button>
-                ) : (
-                  <div className="flex items-start gap-3 px-3 py-1.5">{body}</div>
-                )}
+                <button type="button" className="flex w-full items-start gap-3 rounded-md px-3 py-1.5 text-left hover:bg-sheet2" onClick={() => onPick(i)} aria-label={`Focus on ${i.title}`}>
+                  {body}
+                </button>
               </li>
             );
           })}
@@ -68,36 +64,39 @@ export function UpNext({ items, lists, calendars, onPick }: { items: TodoItem[];
   );
 }
 
-/** Before starting: today's open tasks. The highlighted one is what Start will focus on. */
-export function TaskPicker({ tasks, lists, selectedId, suggestedId, onPick }: { tasks: Task[]; lists: List[]; selectedId: string | null; suggestedId: string | null; onPick: (t: Task) => void }) {
+/** Before starting: today's open items (tasks and to-do events). The highlighted one is what Start will focus on. */
+export function TaskPicker({ items, lists, calendars, selectedId, suggestedId, onPick }: { items: TodoItem[]; lists: List[]; calendars: CalendarRow[]; selectedId: string | null; suggestedId: string | null; onPick: (i: TodoItem) => void }) {
   return (
-    <section aria-label="Pick a task" className="focus-aux min-w-0">
-      <Heading>Today&apos;s tasks</Heading>
-      {tasks.length === 0 ? (
+    <section aria-label="Pick something to focus on" className="focus-aux min-w-0">
+      <Heading>Today&apos;s list</Heading>
+      {items.length === 0 ? (
         <p className="text-sm text-ink3">Nothing due today. You can still start a timer without a task.</p>
       ) : (
-        <ul className="grid gap-0.5" role="radiogroup" aria-label="Task to focus on">
-          {tasks.slice(0, 8).map((t) => {
-            const on = t.id === selectedId;
-            const list = lists.find((l) => l.id === t.list_id);
+        <ul className="grid gap-0.5" role="radiogroup" aria-label="Item to focus on">
+          {items.slice(0, 8).map((i) => {
+            const id = itemId(i);
+            const on = id === selectedId;
+            const list = lists.find((l) => l.id === i.listId);
+            const est = estimateMinutes(i);
             return (
-              <li key={t.id}>
+              <li key={i.key}>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={on}
                   className={`flex w-full items-start gap-3 rounded-md px-3 py-1.5 text-left transition-colors ${on ? "bg-sheet2" : "hover:bg-sheet2/70"}`}
                   style={on ? { boxShadow: "inset 3px 0 0 var(--accent)" } : undefined}
-                  onClick={() => onPick(t)}
+                  onClick={() => onPick(i)}
                 >
                   <span className="mt-[0.4rem]">
-                    <ListDot color={list?.color ?? "var(--ink-3)"} size={8} />
+                    <ListDot color={itemColor(i.listId, i.event?.calendar_id ?? null, lists, calendars)} size={8} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.95rem]">{t.title}</span>
+                    <span className="block truncate text-[0.95rem]">{i.title}</span>
                     <span className="num block text-xs text-ink3">
-                      {list?.name ?? "Inbox"} · {formatTakes(takesMinutes(t))}
-                      {t.id === suggestedId ? " · suggested" : ""}
+                      {list?.name ?? (i.event ? "Calendar" : "Inbox")}
+                      {est ? ` · ${formatTakes(est)}` : ""}
+                      {id === suggestedId ? " · suggested" : ""}
                     </span>
                   </span>
                 </button>

@@ -75,6 +75,10 @@ export type FocusMode = "stopwatch" | "countdown" | "pomodoro" | "until_event";
 export interface FocusSession {
   id: string;
   task_id: string | null;
+  /** A calendar to-do event focused on instead of a task (migration 0008). */
+  event_id?: string | null;
+  /** The task's or event's title when the session started (migration 0008). */
+  title?: string | null;
   kind: "work" | "break";
   mode: FocusMode;
   /** Target length for countdown/pomodoro/until_event; null for a stopwatch. */

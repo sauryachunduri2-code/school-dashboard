@@ -21,31 +21,36 @@ import {
   formatMinutes,
   formatOver,
   formatRemaining,
+  estimateMinutes,
   hoursForMinutes,
+  itemId,
   isOpen,
   isPaused,
   isTimeUp,
   nextPhase,
   nextTimedEvent,
-  pickableTasks,
+  pickableItems,
   plannedFor,
   pomodorosInRun,
   remainingMs,
   ringFraction,
-  suggestTask,
+  targetOf,
+  targetTitle,
+  type FocusTarget,
+  suggestItem,
   untilEventSeconds,
   upNextItems,
 } from "@/lib/focus";
-import { newHoursLog, useCalendars, useEventChecks, useFocusActions, useGoogleEvents, useLists, useRowMutations, useRows, useTaskActions } from "@/lib/hooks";
-import { buildTodoList } from "@/lib/insights";
+import { newHoursLog, useCalendars, useEventCheckToggle, useEventChecks, useFocusActions, useGoogleEvents, useLists, useRowMutations, useRows, useTaskActions } from "@/lib/hooks";
+import { buildTodoList, type TodoItem } from "@/lib/insights";
 import { currentStep, stepsOf, toggleStep } from "@/lib/steps";
-import { formatTakes, takesMinutes } from "@/lib/timeline";
+import { formatTakes } from "@/lib/timeline";
 import { useUi } from "@/lib/ui";
-import type { FocusMode, Task, TaskStep } from "@/lib/types";
+import type { FocusMode, GEvent, Task, TaskStep } from "@/lib/types";
 import { MiniTimer, usePip } from "./mini-timer";
 import { TimerRing, type RingTone } from "./ring";
 import { EventWarning, TaskPicker, UpNext } from "./side-panels";
-import { StepsPanel } from "./steps-panel";
+import { EventNotes, StepsPanel } from "./steps-panel";
 import {
   askNotificationPermission,
   isTypingTarget,
@@ -78,13 +83,31 @@ interface Summary {
   logged: boolean;
 }
 
+/** Finds what "task:<id>" or "event:<id>" points at, among the loaded tasks and events. */
+function resolveTarget(id: string | null, tasks: Task[], todo: TodoItem[], events: GEvent[]): FocusTarget | null {
+  if (!id) return null;
+  const rest = id.slice(id.indexOf(":") + 1);
+  if (id.startsWith("task:")) {
+    const t = tasks.find((x) => x.id === rest);
+    return t ? { kind: "task", task: t } : null;
+  }
+  const item = todo.find((i) => i.event?.id === rest);
+  const event = item?.event ?? events.find((e) => e.id === rest);
+  return event ? { kind: "event", event, item } : null;
+}
+
+/** The wall clock, read only from event handlers. */
+const clockNow = () => Date.now();
+
 const iconBtn = "btn btn-ghost !h-9 !w-9 !justify-center !px-0 text-ink2";
 
 export function FocusScreen() {
   const router = useRouter();
-  const param = useSearchParams().get("task");
+  const params = useSearchParams();
+  const paramId = params.get("task") ? `task:${params.get("task")}` : params.get("event") ? `event:${params.get("event")}` : null;
   const { toast, editor, quickAddOpen, searchOpen } = useUi();
   const { update, create, toggleComplete } = useTaskActions();
+  const toggleEvent = useEventCheckToggle();
   const actions = useFocusActions();
   const hours = useRowMutations("hours_logs");
 
@@ -121,25 +144,37 @@ export function FocusScreen() {
   const minute = Math.floor(nowMs / 60_000);
   const checked = useMemo(() => checkSet(checks), [checks]);
   const todo = useMemo(() => buildTodoList(tasks, events, checked, new Date(minute * 60_000)), [tasks, events, checked, minute]);
-  const suggestion = useMemo(() => suggestTask(tasks, todo, minute * 60_000), [tasks, todo, minute]);
-  const pickable = useMemo(() => pickableTasks(todo), [todo]);
+  const suggestion = useMemo(() => suggestItem(tasks, todo, minute * 60_000), [tasks, todo, minute]);
+  const suggestionId = suggestion ? itemId(suggestion) : null;
+  const pickable = useMemo(() => pickableItems(todo), [todo]);
 
-  const wantedId = picked ?? param;
-  const wanted = wantedId ? tasks.find((t) => t.id === wantedId) : undefined;
-  const taskId = open ? open.task_id : (wanted?.id ?? suggestion?.id ?? null);
-  const task = taskId ? (tasks.find((t) => t.id === taskId) ?? null) : null;
-  const list = task ? lists.find((l) => l.id === task.list_id) : undefined;
+  // The target is looked up by "task:<id>" / "event:<id>". An open session wins; a free-focus session has none.
+  const openId = open ? (open.event_id ? `event:${open.event_id}` : open.task_id ? `task:${open.task_id}` : null) : null;
+  const targetId = open ? openId : (picked ?? paramId ?? suggestionId);
+  const target = resolveTarget(targetId, tasks, todo, events);
+  const task = target?.kind === "task" ? target.task : null;
+  const event = target?.kind === "event" ? target.event : null;
+  // What the plan sizes itself from ("Estimate" countdown): a task's estimate or an event's length.
+  const sized = task ?? (event ? { duration_minutes: estimateMinutes({ event }) } : null);
+  const estMin = task || event ? estimateMinutes({ task: task ?? undefined, event: event ?? undefined }) : null;
+  const listId = task?.list_id ?? event?.list_id ?? null;
+  const list = listId ? lists.find((l) => l.id === listId) : undefined;
   const step = task ? currentStep(task) : null;
+  const taskId = task?.id;
+  const eventId = event?.id;
+  // An open session whose event hasn't loaded yet still names itself.
+  const title = target ? targetTitle(target) : (open?.title ?? null);
 
-  const soon = useMemo(() => eventSoon(events, minute * 60_000, 60), [events, minute]);
+  // Don't warn about the event being focused on: it's the work, not an interruption.
+  const soon = eventSoon(eventId ? events.filter((e) => e.id !== eventId) : events, minute * 60_000, 60);
   const nextEvent = useMemo(() => nextTimedEvent(events, nowMs), [events, nowMs]);
   const untilSeconds = untilEventSeconds(events, nowMs);
-  const upNext = useMemo(() => upNextItems(todo, taskId, 3), [todo, taskId]);
+  const upNext = upNextItems(todo, { taskId, eventId }, 3);
   const totals = focusTotals(sessions, nowMs);
   const inRun = pomodorosInRun(sessions, prefs.pomodoro, nowMs);
 
   // A "Focus" link to another task while a session is open: offer the switch instead of silently ignoring it.
-  const conflict = open && param && !picked && param !== open.task_id && !dismissedSwitch ? tasks.find((t) => t.id === param) : undefined;
+  const conflict = open && paramId && !picked && paramId !== openId && !dismissedSwitch ? resolveTarget(paramId, tasks, todo, events) : null;
 
   // ---------------------------------------------------------------- timer numbers
   const timeUp = !!open && isTimeUp(open, nowMs);
@@ -147,7 +182,7 @@ export function FocusScreen() {
   const over = rem != null && rem < 0 ? -rem : 0;
   const isBreak = open?.kind === "break";
   const ready = !open && !summary;
-  const plan = plannedFor(prefs, task, untilSeconds);
+  const plan = plannedFor(prefs, sized, untilSeconds);
   const time = open
     ? rem == null
       ? formatClock(elapsedMs(open, nowMs))
@@ -156,7 +191,7 @@ export function FocusScreen() {
       ? formatClock(plan.seconds * 1000)
       : "00:00";
   const tone: RingTone = !open ? "idle" : isBreak ? "break" : timeUp ? "over" : "work";
-  const heading = task?.title ?? "Free focus";
+  const heading = title ?? "Free focus";
 
   // ---------------------------------------------------------------- chime + notification, once per timer end
   const fired = useRef<string | null>(null);
@@ -188,7 +223,7 @@ export function FocusScreen() {
 
   // ---------------------------------------------------------------- environment
   useWakeLock(running);
-  useDocumentTitle(open ? `${paused ? "⏸ " : ""}${time}${isBreak ? " · Break" : ""} · ${task?.title ?? "Focus"}` : null);
+  useDocumentTitle(open ? `${paused ? "⏸ " : ""}${time}${isBreak ? " · Break" : ""} · ${title ?? "Focus"}` : null);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -207,30 +242,53 @@ export function FocusScreen() {
 
   // ---------------------------------------------------------------- actions
   function setUrl(id: string | null) {
-    router.replace(id ? `/focus?task=${id}` : "/focus", { scroll: false });
+    if (!id) return router.replace("/focus", { scroll: false });
+    const i = id.indexOf(":");
+    router.replace(`/focus?${id.slice(0, i)}=${encodeURIComponent(id.slice(i + 1))}`, { scroll: false });
   }
 
-  function pickTask(t: Task) {
-    setPicked(t.id);
+  function pickTarget(t: FocusTarget) {
+    const id = itemId(t.kind === "task" ? { task: t.task } : { event: t.event });
+    setPicked(id);
     setSummary(null);
-    setUrl(t.id);
+    setUrl(id);
   }
 
-  async function startWork(t: Task | null) {
+  const pickItem = (i: TodoItem) => {
+    const t = targetOf(i);
+    if (t) pickTarget(t);
+  };
+
+  function pickUpNext(i: TodoItem) {
+    const t = targetOf(i);
+    if (!t) return;
+    if (open) void startWork(t);
+    else pickTarget(t);
+  }
+
+  async function startWork(t: FocusTarget | null) {
     if (busy) return null;
     setBusy(true);
     unlockAudio();
-    const p = plannedFor(prefs, t, untilEventSeconds(events, Date.now()));
+    const p = plannedFor(prefs, t ? (t.kind === "task" ? t.task : { duration_minutes: estimateMinutes({ event: t.event }) }) : null, untilEventSeconds(events, clockNow()));
     if (prefs.mode === "until_event" && p.mode !== "until_event") toast("No event left today, so I'm counting up instead.");
-    const s = await actions.start({ task_id: t?.id ?? null, mode: p.mode, planned_seconds: p.seconds, now: Date.now() });
+    const s = await actions.start({
+      task_id: t?.kind === "task" ? t.task.id : null,
+      event_id: t?.kind === "event" ? t.event.id : null,
+      title: t ? targetTitle(t) : null,
+      mode: p.mode,
+      planned_seconds: p.seconds,
+      now: clockNow(),
+    });
     setBusy(false);
     if (s) {
       setSummary(null);
       if (t) {
-        setPicked(t.id);
-        setUrl(t.id);
+        const id = itemId(t.kind === "task" ? { task: t.task } : { event: t.event });
+        setPicked(id);
+        setUrl(id);
       }
-      setAnnouncement(`Started${t ? ` ${t.title}` : ""}.`);
+      setAnnouncement(`Started${t ? ` ${targetTitle(t)}` : ""}.`);
     }
     return s;
   }
@@ -238,11 +296,11 @@ export function FocusScreen() {
   async function startBreak() {
     if (!open || open.kind !== "work" || busy) return;
     setBusy(true);
-    const t = Date.now();
+    const t = clockNow();
     const asEnded = sessions.map((s) => (s.id === open.id ? endSession(s, t) : s));
     const pomo = open.mode === "pomodoro";
     const ph = pomo ? nextPhase(open, prefs.pomodoro, pomodorosInRun(asEnded, prefs.pomodoro, t)) : { kind: "break" as const, seconds: prefs.pomodoro.shortMin * 60, long: false };
-    const s = await actions.start({ task_id: open.task_id, kind: "break", mode: pomo ? "pomodoro" : "countdown", planned_seconds: ph.seconds, now: t });
+    const s = await actions.start({ task_id: open.task_id, event_id: open.event_id, title: open.title, kind: "break", mode: pomo ? "pomodoro" : "countdown", planned_seconds: ph.seconds, now: t });
     setBusy(false);
     if (s) setAnnouncement(`${ph.long ? "Long break" : "Break"}, ${formatMinutes(ph.seconds / 60)}.`);
   }
@@ -250,8 +308,8 @@ export function FocusScreen() {
   async function backToWork() {
     if (!open || open.kind !== "break" || busy) return;
     setBusy(true);
-    const p = open.mode === "pomodoro" ? { mode: "pomodoro" as const, seconds: nextPhase(open, prefs.pomodoro, 0).seconds } : plannedFor(prefs, task, untilEventSeconds(events, Date.now()));
-    const s = await actions.start({ task_id: open.task_id, mode: p.mode, planned_seconds: p.seconds, now: Date.now() });
+    const p = open.mode === "pomodoro" ? { mode: "pomodoro" as const, seconds: nextPhase(open, prefs.pomodoro, 0).seconds } : plannedFor(prefs, sized, untilEventSeconds(events, clockNow()));
+    const s = await actions.start({ task_id: open.task_id, event_id: open.event_id, title: open.title, mode: p.mode, planned_seconds: p.seconds, now: clockNow() });
     setBusy(false);
     if (s) setAnnouncement("Back to work.");
   }
@@ -264,7 +322,7 @@ export function FocusScreen() {
 
   function primary() {
     if (busy) return;
-    if (!open) void startWork(task);
+    if (!open) void startWork(target);
     else if (timeUp && !isBreak && open.mode === "pomodoro") void startBreak();
     else if (timeUp && isBreak) void backToWork();
     else void togglePause();
@@ -275,32 +333,36 @@ export function FocusScreen() {
   }
 
   function nextTask() {
-    const next = pickable.find((t) => t.id !== taskId);
-    if (!next) {
+    const next = pickable.find((i) => itemId(i) !== targetId);
+    const nextTarget = next ? targetOf(next) : null;
+    if (!nextTarget) {
       toast("That's everything on today's list.");
       return;
     }
-    if (open) void startWork(next);
-    else pickTask(next);
+    if (open) void startWork(nextTarget);
+    else pickTarget(nextTarget);
   }
 
   async function finish() {
     if (!open || busy) return;
     setBusy(true);
-    const t = Date.now();
+    const t = clockNow();
     const ended = await actions.end(open);
     if (!ended) return setBusy(false);
     if (task && !task.completed_at && !(await toggleComplete(task))) return setBusy(false);
+    // Events are checked off for today, and only if they aren't already.
+    const eventItem = event ? todo.find((i) => i.event?.id === event.id) : undefined;
+    if (event && !eventItem?.done) await toggleEvent(event, new Date(t));
     const all = sessions.map((s) => (s.id === ended.id ? ended : s));
-    const mine = task ? all.filter((s) => s.task_id === task.id) : [ended];
-    const est = task ? actualVsEstimate(all, task, t) : { actualMin: Math.round(elapsedMs(ended, t) / 60_000), estimateMin: null };
+    const mine = task ? all.filter((s) => s.task_id === task.id) : event ? all.filter((s) => s.event_id === event.id) : [ended];
+    const est = task ? actualVsEstimate(all, task, t) : { actualMin: Math.round(elapsedMs(ended, t) / 60_000), estimateMin: estMin };
     setSummary({
       taskId: task?.id ?? null,
-      title: task?.title ?? "Free focus",
+      title: title ?? "Free focus",
       actualMin: est.actualMin,
       estimateMin: est.estimateMin,
       todayMin: Math.round(focusTotals(mine, t).workMs / 60_000),
-      listId: task?.list_id ?? null,
+      listId,
       logged: false,
     });
     setPicked(null);
@@ -414,8 +476,8 @@ export function FocusScreen() {
       <span className="num focus-over">{formatOver(over)}</span>
     ) : planned != null ? (
       <span className="num">of {formatClock(planned * 1000)}</span>
-    ) : task?.duration_minutes != null ? (
-      <span>est. {formatMinutes(takesMinutes(task))}</span>
+    ) : (task ? task.duration_minutes != null : event && estMin != null) ? (
+      <span>est. {formatMinutes(estMin ?? 30)}</span>
     ) : (
       <span>counting up</span>
     )
@@ -484,7 +546,7 @@ export function FocusScreen() {
       {conflict && open && (
         <div className="mx-5 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-sheet2 px-3 py-2 text-sm">
           <span className="min-w-0 flex-1">
-            You&apos;re timing another task. Focus on <strong className="font-semibold">{conflict.title}</strong> instead?
+            You&apos;re timing something else. Focus on <strong className="font-semibold">{targetTitle(conflict)}</strong> instead?
           </span>
           <button type="button" className="btn btn-primary !min-h-8" onClick={() => void startWork(conflict)}>
             Switch
@@ -497,7 +559,7 @@ export function FocusScreen() {
 
       <main className="mx-auto grid w-full max-w-[96rem] flex-1 content-center gap-8 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-12">
         {/* left: steps */}
-        <div className="focus-aux order-3 lg:order-1 lg:max-h-[70vh] lg:self-center lg:overflow-y-auto lg:pr-1">{task && !summary && <StepsPanel key={task.id} task={task} onChange={changeSteps} />}</div>
+        <div className="focus-aux order-3 lg:order-1 lg:max-h-[70vh] lg:self-center lg:overflow-y-auto lg:pr-1">{!summary && task && <StepsPanel key={task.id} task={task} onChange={changeSteps} />}{!summary && event && <EventNotes key={event.id} event={event} />}</div>
 
         {/* center: timer */}
         <div className="order-1 min-w-0 lg:order-2">
@@ -518,7 +580,7 @@ export function FocusScreen() {
                 <div className="rounded-lg border border-rulestrong px-4 py-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-ink3">Next up</p>
                   <p className="display mt-1 truncate text-xl">{suggestion.title}</p>
-                  <button type="button" className="btn btn-primary mt-3 !rounded-full !px-6" onClick={() => void startWork(suggestion)} disabled={busy}>
+                  <button type="button" className="btn btn-primary mt-3 !rounded-full !px-6" onClick={() => void startWork(targetOf(suggestion))} disabled={busy}>
                     <IconPlay /> Start
                   </button>
                 </div>
@@ -570,7 +632,7 @@ export function FocusScreen() {
                   </button>
                 )}
                 {open && (
-                  <button type="button" className="btn !h-11 !rounded-full" onClick={() => void finish()} disabled={busy} title={task ? "Finish and check the task off" : "Finish"}>
+                  <button type="button" className="btn !h-11 !rounded-full" onClick={() => void finish()} disabled={busy} title={task ? "Finish and check the task off" : event ? "Finish and check the event off" : "Finish"}>
                     Done
                   </button>
                 )}
@@ -602,12 +664,12 @@ export function FocusScreen() {
                           {m} min
                         </Chip>
                       ))}
-                      {task && (
+                      {sized && (
                         <Chip on={prefs.countdown === "estimate"} onClick={() => {
                             setCustomOpen(false);
                             setPrefs({ countdown: "estimate" });
                           }}>
-                          Estimate · {formatTakes(takesMinutes(task))}
+                          Estimate · {formatTakes(estMin ?? 30)}
                         </Chip>
                       )}
                       <Chip on={customOpen || (prefs.countdown !== "estimate" && !(COUNTDOWN_PRESETS as readonly number[]).includes(prefs.countdown))} onClick={() => setCustomOpen(true)}>
@@ -683,7 +745,7 @@ export function FocusScreen() {
         {/* right: what's next */}
         <div className="order-4 grid min-w-0 content-center gap-5 lg:self-center">
           {soon && !summary && <EventWarning event={soon.event} minutes={soon.minutes} />}
-          {ready ? <TaskPicker tasks={pickable} lists={lists} selectedId={task?.id ?? null} suggestedId={suggestion?.id ?? null} onPick={pickTask} /> : <UpNext items={upNext} lists={lists} calendars={calendars} onPick={(t) => (open ? void startWork(t) : pickTask(t))} />}
+          {ready ? <TaskPicker items={pickable} lists={lists} calendars={calendars} selectedId={targetId} suggestedId={suggestionId} onPick={pickItem} /> : <UpNext items={upNext} lists={lists} calendars={calendars} onPick={pickUpNext} />}
         </div>
       </main>
 
@@ -711,7 +773,7 @@ export function FocusScreen() {
       {pip.win && open && (
         <MiniTimer
           win={pip.win}
-          title={isBreak ? "Break" : (task?.title ?? "Focus")}
+          title={isBreak ? "Break" : (title ?? "Focus")}
           color={list?.color ?? null}
           time={time}
           sub={paused ? "Paused" : over > 0 ? formatOver(over) : planned != null ? `of ${formatClock(planned * 1000)}` : "counting up"}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checkIdFor } from "@/lib/event-checks";
 import { freeGaps, tonightCapacity } from "@/lib/free";
 import { newTask } from "@/lib/tasks";
 import type { GEvent, Task } from "@/lib/types";
@@ -108,6 +109,20 @@ describe("tonightCapacity", () => {
 
   it("sums open tasks due today or overdue, and counts them", () => {
     expect(tonightCapacity({ tasks, events, now: NOW })).toEqual({ workMinutes: 135, freeMinutes: 360, taskCount: 3 });
+  });
+
+  it("counts today's open to-do events as work, not busy time", () => {
+    // Study 19-20:30 is a to-do (90m of work, not busy); Practice 16-17 is a plain event (busy).
+    // Free 14-16 (120) + 17-22 (300) = 420.
+    const evs = [ev({ id: "Study", todo: true, start: iso(at(19)), end: iso(at(20, 30)) }), ev({ id: "Practice", start: iso(at(16)), end: iso(at(17)) })];
+    expect(tonightCapacity({ tasks: [], events: evs, now: NOW })).toEqual({ workMinutes: 90, freeMinutes: 420, taskCount: 1 });
+  });
+
+  it("skips checked-off to-do events, and gives all-day ones 30 minutes", () => {
+    const study = ev({ id: "Study", todo: true, start: iso(at(19)), end: iso(at(20)) });
+    const allDay = ev({ id: "Reading", todo: true, all_day: true, start: "2026-11-19", end: "2026-11-20" });
+    const checked = new Set([checkIdFor(study, NOW)]);
+    expect(tonightCapacity({ tasks: [], events: [study, allDay], now: NOW, checked })).toMatchObject({ workMinutes: 30, taskCount: 1 });
   });
 
   it("uses the default take length for tasks without one", () => {

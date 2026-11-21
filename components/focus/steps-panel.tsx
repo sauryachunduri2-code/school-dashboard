@@ -4,7 +4,7 @@ import { useState } from "react";
 import { IconX } from "@/components/icons";
 import { TaskCheck } from "@/components/task-row";
 import { currentStep, newStep, removeStep, stepProgress, stepsOf, toggleStep } from "@/lib/steps";
-import type { Task, TaskStep } from "@/lib/types";
+import type { GEvent, Task, TaskStep } from "@/lib/types";
 
 /** The task's checklist: tick steps live, the first open one is highlighted, add more inline. Falls back to the notes. */
 export function StepsPanel({ task, onChange }: { task: Task; onChange: (steps: TaskStep[]) => void }) {
@@ -78,6 +78,18 @@ export function StepsPanel({ task, onChange }: { task: Task; onChange: (steps: T
           <p className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">{task.notes}</p>
         </details>
       )}
+    </section>
+  );
+}
+
+/** A to-do event has no steps: show its description (read-only), or nothing. */
+export function EventNotes({ event }: { event: GEvent }) {
+  const text = event.description.trim();
+  if (!text) return null;
+  return (
+    <section aria-label="Event notes" className="min-w-0">
+      <h2 className="display mb-2 text-base">Notes</h2>
+      <p className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-sheet2/60 px-3 py-2 text-sm leading-relaxed text-ink2">{text}</p>
     </section>
   );
 }

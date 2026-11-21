@@ -23,17 +23,20 @@ import {
   nextTimedEvent,
   parseFocusPrefs,
   pause,
-  pickableTasks,
+  pickableItems,
   plannedFor,
   pomodorosInRun,
   remainingMs,
   resume,
   ringFraction,
   sanitizePomodoro,
-  suggestTask,
+  suggestItem,
+  targetOf,
+  withTarget,
   untilEventSeconds,
   upNextItems,
 } from "@/lib/focus";
+import { checkIdFor } from "@/lib/event-checks";
 import { buildTodoList } from "@/lib/insights";
 import { newTask } from "@/lib/tasks";
 import type { FocusSession, GEvent, Task } from "@/lib/types";
@@ -313,29 +316,39 @@ describe("suggesting what to work on", () => {
   const todoOf = (tasks: Task[], events: GEvent[] = []) => buildTodoList(tasks, events, new Set(), now);
   it("prefers the oldest overdue task", () => {
     const tasks = [timedTask("Anki", 21), dateTask("Old", 2), dateTask("Yesterday", 5), timedTask("Late", 9)];
-    expect(suggestTask(tasks, todoOf(tasks), now)?.title).toBe("Old");
+    expect(suggestItem(tasks, todoOf(tasks), now)?.title).toBe("Old");
   });
   it("then today's soonest timed task, before date-only ones", () => {
     const tasks = [dateTask("HW", 6), timedTask("Anki", 21), timedTask("Lab", 15)];
-    expect(suggestTask(tasks, todoOf(tasks), now)?.title).toBe("Lab");
+    expect(suggestItem(tasks, todoOf(tasks), now)?.title).toBe("Lab");
     const onlyDate = [dateTask("HW", 6)];
-    expect(suggestTask(onlyDate, todoOf(onlyDate), now)?.title).toBe("HW");
+    expect(suggestItem(onlyDate, todoOf(onlyDate), now)?.title).toBe("HW");
   });
-  it("skips done tasks and events", () => {
+  it("skips done tasks and checked events", () => {
     const tasks = [timedTask("Done", 13, 0, { completed_at: iso(at(11)) }), timedTask("Open", 18)];
     const events = [ev("Lunch", 12, 30, 13, { todo: true })];
-    expect(suggestTask(tasks, todoOf(tasks, events), now)?.title).toBe("Open");
+    const todo = buildTodoList(tasks, events, new Set([checkIdFor(events[0], now)]), now);
+    expect(todo.find((i) => i.kind === "event")?.done).toBe(true);
+    expect(suggestItem(tasks, todo, now)?.title).toBe("Open");
+  });
+  it("suggests a to-do event when it is the only thing, and in time order alongside tasks", () => {
+    const events = [ev("Lunch", 12, 30, 13, { todo: true })];
+    expect(suggestItem([], todoOf([], events), now)).toMatchObject({ kind: "event", title: "Lunch" });
+    const tasks = [timedTask("Anki", 21)];
+    expect(suggestItem(tasks, todoOf(tasks, events), now)?.title).toBe("Lunch");
+    const late = [dateTask("Old", 2)];
+    expect(suggestItem(late, todoOf(late, events), now)?.title).toBe("Old");
   });
   it("falls back to starred or flagged tasks (both first, then starred, then flagged)", () => {
     const tasks = [task({ title: "Plain" }), task({ title: "Flag", flagged: true }), task({ title: "Star", starred: true }), task({ title: "Both", starred: true, flagged: true })];
-    expect(suggestTask(tasks, todoOf(tasks), now)?.title).toBe("Both");
-    expect(suggestTask(tasks.slice(0, 3), todoOf(tasks), now)?.title).toBe("Star");
-    expect(suggestTask([tasks[0], tasks[1]], [], now)?.title).toBe("Flag");
+    expect(suggestItem(tasks, todoOf(tasks), now)?.title).toBe("Both");
+    expect(suggestItem(tasks.slice(0, 3), todoOf(tasks), now)?.title).toBe("Star");
+    expect(suggestItem([tasks[0], tasks[1]], [], now)?.title).toBe("Flag");
   });
   it("ignores completed starred tasks and is null when nothing qualifies", () => {
     const tasks = [task({ title: "Plain" }), task({ title: "Star done", starred: true, completed_at: iso(at(9)) })];
-    expect(suggestTask(tasks, todoOf(tasks), now)).toBeNull();
-    expect(suggestTask([], [], now)).toBeNull();
+    expect(suggestItem(tasks, todoOf(tasks), now)).toBeNull();
+    expect(suggestItem([], [], now)).toBeNull();
   });
   it("up next skips the current task and done items, and caps the list", () => {
     const tasks = [timedTask("A", 13), timedTask("B", 14), timedTask("C", 15), timedTask("D", 16), timedTask("Done", 12, 30, { completed_at: iso(at(12)) })];
@@ -344,9 +357,31 @@ describe("suggesting what to work on", () => {
     expect(upNextItems(todo, null, 2).map((i) => i.title)).toEqual(["A", "B"]);
     expect(upNextItems(todo, null, 10).map((i) => i.title)).toEqual(["A", "B", "C", "D"]);
   });
-  it("pickableTasks lists open tasks in to-do order", () => {
+  it("up next can skip the current event too", () => {
+    const events = [ev("E1", 13, 0, 14, { todo: true }), ev("E2", 15, 0, 16, { todo: true })];
+    expect(upNextItems(todoOf([], events), { eventId: "E1" }).map((i) => i.title)).toEqual(["E2"]);
+  });
+  it("pickableItems lists open tasks and to-do events in to-do order", () => {
     const tasks = [timedTask("B", 14), timedTask("A", 13), timedTask("Done", 12, 30, { completed_at: iso(at(12)) })];
-    expect(pickableTasks(todoOf(tasks, [ev("E", 12, 40, 13, { todo: true })])).map((t) => t.title)).toEqual(["A", "B"]);
+    const items = pickableItems(todoOf(tasks, [ev("E", 12, 40, 13, { todo: true })]));
+    expect(items.map((i) => i.title)).toEqual(["E", "A", "B"]);
+    expect(items.map((i) => i.kind)).toEqual(["event", "task", "task"]);
+  });
+  it("withTarget and newSession only write event_id/title when they have values", () => {
+    const base = newSession({ task_id: null, mode: "stopwatch", now: NOW });
+    expect("event_id" in base).toBe(false);
+    expect("title" in base).toBe(false);
+    const t = timedTask("A", 13);
+    const forTask = withTarget(base, { kind: "task", task: t });
+    expect(forTask).toMatchObject({ task_id: t.id, title: "A" });
+    expect("event_id" in forTask).toBe(false);
+    const item = pickableItems(todoOf([], [ev("E", 13, 0, 14, { todo: true })]))[0];
+    const target = targetOf(item)!;
+    const forEvent = withTarget(forTask, target);
+    expect(forEvent).toMatchObject({ task_id: null, event_id: "E", title: "E" });
+    expect(withTarget(forEvent, null)).not.toHaveProperty("event_id");
+    expect(newSession({ task_id: null, event_id: "E", title: "E", mode: "stopwatch", now: NOW })).toMatchObject({ task_id: null, event_id: "E", title: "E" });
+    expect("event_id" in newSession({ task_id: "t", event_id: null, title: "T", mode: "stopwatch", now: NOW })).toBe(false);
   });
   it("estimates minutes from a task's takes or an event's length", () => {
     const t = timedTask("A", 13, 0, { duration_minutes: 45 });

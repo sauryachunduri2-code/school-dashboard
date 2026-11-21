@@ -24,7 +24,7 @@ export function FocusPill() {
   const over = rem != null && rem < 0;
   const time = rem == null ? formatClock(elapsedMs(open, now)) : over ? formatOver(-rem).replace(" over", "") : formatRemaining(rem);
   const isBreak = open.kind === "break";
-  const title = isBreak ? "Break" : (tasks.find((t) => t.id === open.task_id)?.title ?? "Focus");
+  const title = isBreak ? "Break" : (open.title ?? tasks.find((t) => t.id === open.task_id)?.title ?? "Focus");
   const label = `${paused ? "Paused" : isBreak ? "Break" : "Focusing"}: ${title}, ${time}`;
 
   return (
