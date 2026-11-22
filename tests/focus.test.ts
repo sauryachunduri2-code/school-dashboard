@@ -473,10 +473,10 @@ describe("remembered mode", () => {
   it("falls back to defaults on nothing or junk", () => {
     expect(parseFocusPrefs(null)).toEqual(DEFAULT_FOCUS_PREFS);
     expect(parseFocusPrefs("{nope")).toEqual(DEFAULT_FOCUS_PREFS);
-    expect(parseFocusPrefs(JSON.stringify({ mode: "zzz", countdown: "x", alerts: 3, dim: "yes" }))).toEqual({ ...DEFAULT_FOCUS_PREFS, countdown: 25 });
+    expect(parseFocusPrefs(JSON.stringify({ mode: "zzz", countdown: "x", alerts: 3, dim: "yes", display: "clock" }))).toEqual({ ...DEFAULT_FOCUS_PREFS, countdown: 25 });
   });
   it("round-trips a saved choice", () => {
-    const saved = { mode: "pomodoro", countdown: "estimate", pomodoro: { workMin: 50, shortMin: 10, longMin: 30, every: 3 }, alerts: false, dim: true };
+    const saved = { mode: "pomodoro", countdown: "estimate", pomodoro: { workMin: 50, shortMin: 10, longMin: 30, every: 3 }, alerts: false, dim: true, display: "time" as const };
     expect(parseFocusPrefs(JSON.stringify(saved))).toEqual(saved);
     expect(parseFocusPrefs(JSON.stringify({ mode: "countdown", countdown: 45 })).countdown).toBe(45);
   });

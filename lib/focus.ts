@@ -336,11 +336,13 @@ export interface FocusPrefs {
   alerts: boolean;
   /** Low-contrast clock for late nights. */
   dim: boolean;
+  /** What the big number shows: the running timer, or the time of day (nothing ticking; the timer keeps running). */
+  display: "timer" | "time";
 }
 
 export const FOCUS_PREFS_KEY = "sd-focus";
 export const COUNTDOWN_PRESETS = [15, 25, 45, 60] as const;
-export const DEFAULT_FOCUS_PREFS: FocusPrefs = { mode: "stopwatch", countdown: 25, pomodoro: DEFAULT_POMODORO, alerts: true, dim: false };
+export const DEFAULT_FOCUS_PREFS: FocusPrefs = { mode: "stopwatch", countdown: 25, pomodoro: DEFAULT_POMODORO, alerts: true, dim: false, display: "timer" };
 
 const MODES: FocusMode[] = ["stopwatch", "countdown", "pomodoro", "until_event"];
 
@@ -353,6 +355,7 @@ export function parseFocusPrefs(raw: string | null | undefined): FocusPrefs {
       pomodoro: sanitizePomodoro(p.pomodoro as Partial<PomodoroSettings> | undefined),
       alerts: typeof p.alerts === "boolean" ? p.alerts : DEFAULT_FOCUS_PREFS.alerts,
       dim: p.dim === true,
+      display: p.display === "time" ? "time" : "timer",
     };
   } catch {
     return DEFAULT_FOCUS_PREFS;

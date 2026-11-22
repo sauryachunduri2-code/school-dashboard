@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListDot } from "@/components/bits";
-import { IconBell, IconBellOff, IconCoffee, IconFullscreen, IconMoon, IconPause, IconPip, IconPlay, IconPlus, IconSkip, IconX } from "@/components/icons";
+import { IconBell, IconBellOff, IconClock, IconCoffee, IconFullscreen, IconMoon, IconPause, IconPip, IconPlay, IconPlus, IconSkip, IconX } from "@/components/icons";
 import { TaskCheck } from "@/components/task-row";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, formatTime, ymd } from "@/lib/dates";
@@ -138,6 +138,9 @@ export function FocusScreen() {
   const running = !!open && !paused;
   const pip = usePip();
   const fs = useFullscreen();
+  // "Time" display: the big number is the time of day, so nothing on screen changes each second. The clock still ticks
+  // every second underneath so the end-of-timer chime is on time.
+  const showTime = prefs.display === "time";
   const nowMs = useNow(running, open ? +new Date(open.started_at) + open.paused_ms : 0, pip.win);
 
   // ---------------------------------------------------------------- what's on today
@@ -223,7 +226,7 @@ export function FocusScreen() {
 
   // ---------------------------------------------------------------- environment
   useWakeLock(running);
-  useDocumentTitle(open ? `${paused ? "⏸ " : ""}${time}${isBreak ? " · Break" : ""} · ${title ?? "Focus"}` : null);
+  useDocumentTitle(open ? `${paused ? "⏸ " : ""}${showTime ? "Focus" : time}${isBreak ? " · Break" : ""} · ${title ?? "Focus"}` : null);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -415,9 +418,10 @@ export function FocusScreen() {
   }
 
   // ---------------------------------------------------------------- keyboard
-  const act = useRef({ primary, startBreak, backToWork, addFive, nextTask, checkCurrentStep, exit, toggleFullscreen: fs.toggle, isBreak });
+  const toggleDisplay = () => setPrefs({ display: prefs.display === "time" ? "timer" : "time" });
+  const act = useRef({ primary, startBreak, backToWork, addFive, nextTask, checkCurrentStep, exit, toggleFullscreen: fs.toggle, toggleDisplay, isBreak });
   useEffect(() => {
-    act.current = { primary, startBreak, backToWork, addFive, nextTask, checkCurrentStep, exit, toggleFullscreen: fs.toggle, isBreak };
+    act.current = { primary, startBreak, backToWork, addFive, nextTask, checkCurrentStep, exit, toggleFullscreen: fs.toggle, toggleDisplay, isBreak };
   });
   const blocked = !!(editor || quickAddOpen || searchOpen);
   useEffect(() => {
@@ -452,6 +456,7 @@ export function FocusScreen() {
       } else if (k === "n") A.nextTask();
       else if (e.key === "+" || e.key === "=") A.addFive();
       else if (k === "f") A.toggleFullscreen();
+      else if (k === "t") A.toggleDisplay();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -491,6 +496,17 @@ export function FocusScreen() {
   );
 
   const clock = new Date(nowMs);
+  // In "Time" display the sub-line says when the timer ends instead of counting: it only changes when you act.
+  const timeSub = !open
+    ? null
+    : paused
+      ? "timer paused"
+      : over > 0 || timeUp
+        ? "time's up"
+        : rem != null
+          ? `ends ${format(new Date(nowMs + rem), "h:mm a")}`
+          : `since ${format(new Date(open.started_at), "h:mm a")}`;
+  const bigTime = showTime ? format(clock, "h:mm") : time;
   // Only offer to log a real stretch of work (a 20 second blip isn't 0.1 hours).
   const ecs = summary ? lists.find((l) => l.id === summary.listId)?.area === "ecs" && (summary.todayMin || summary.actualMin) >= 3 : false;
   const summaryList = summary ? lists.find((l) => l.id === summary.listId) : undefined;
@@ -512,10 +528,23 @@ export function FocusScreen() {
           <h1 className="display min-w-0 truncate text-xl leading-tight sm:text-2xl">{summary ? "Finished" : heading}</h1>
         </div>
         <div className="order-1 ml-auto flex items-center gap-0.5 sm:order-2">
-          <span className="num mr-2 text-lg font-light text-ink2" aria-label="Time now">
-            {format(clock, "h:mm")}
-            <span className="ml-1 text-xs uppercase text-ink3">{format(clock, "a")}</span>
-          </span>
+          {!showTime && (
+            <span className="num mr-2 text-lg font-light text-ink2" aria-label="Time now">
+              {format(clock, "h:mm")}
+              <span className="ml-1 text-xs uppercase text-ink3">{format(clock, "a")}</span>
+            </span>
+          )}
+          <button
+            type="button"
+            className={iconBtn}
+            aria-pressed={showTime}
+            aria-label="Show the time instead of the timer"
+            title={showTime ? "Show the timer (T)" : "Show the time instead of the timer (T)"}
+            onClick={() => setPrefs({ display: showTime ? "timer" : "time" })}
+            style={showTime ? { color: "var(--accent)" } : undefined}
+          >
+            <IconClock />
+          </button>
           <button type="button" className={iconBtn} aria-pressed={prefs.dim} aria-label="Dim mode" title="Dim mode, for late nights" onClick={() => setPrefs({ dim: !prefs.dim })} style={prefs.dim ? { color: "var(--accent)" } : undefined}>
             <IconMoon />
           </button>
@@ -595,8 +624,8 @@ export function FocusScreen() {
             </div>
           ) : (
             <>
-              <TimerRing fraction={open ? ringFraction(open, nowMs) : 0} tone={tone} paused={paused} time={time} top={ringTop}>
-                {sub}
+              <TimerRing fraction={open && !showTime ? ringFraction(open, nowMs) : 0} tone={tone} paused={paused && !showTime} time={bigTime} top={ringTop}>
+                {showTime && timeSub ? <span className="num">{timeSub}</span> : sub}
               </TimerRing>
 
               {/* the step to do right now */}
@@ -757,7 +786,7 @@ export function FocusScreen() {
           </label>
           <input id="focus-park" className="field" placeholder="Park a thought… (goes to Inbox)" value={park} onChange={(e) => setPark(e.target.value)} autoComplete="off" />
         </form>
-        <p className="hidden flex-1 text-center text-xs text-ink3 xl:block">Space pause · B break · N next · + 5 min · F full screen · Esc exit</p>
+        <p className="hidden flex-1 text-center text-xs text-ink3 xl:block">Space pause · B break · N next · + 5 min · T time · F full screen · Esc exit</p>
         <div className="flex items-center gap-3 text-sm text-ink2 md:ml-auto" aria-label="Focused today">
           <span className="num">{totals.workMs >= 60_000 ? `${formatFocused(totals.workMs)} focused` : "Nothing focused yet today"}</span>
           <span className="flex items-center gap-1" aria-hidden>
@@ -775,8 +804,8 @@ export function FocusScreen() {
           win={pip.win}
           title={isBreak ? "Break" : (title ?? "Focus")}
           color={list?.color ?? null}
-          time={time}
-          sub={paused ? "Paused" : over > 0 ? formatOver(over) : planned != null ? `of ${formatClock(planned * 1000)}` : "counting up"}
+          time={bigTime}
+          sub={showTime ? (timeSub ?? "") : paused ? "Paused" : over > 0 ? formatOver(over) : planned != null ? `of ${formatClock(planned * 1000)}` : "counting up"}
           paused={paused}
           step={isBreak ? null : (step?.title ?? null)}
           onToggle={() => void togglePause()}
